@@ -132,6 +132,9 @@ struct State {
     /// A permission has just turned granted: the window should come to the
     /// front (taken once by [`Onboarding::take_grant`]).
     granted_now: bool,
+    /// The settings window is shown. A closed or hidden window is never
+    /// brought back by a grant.
+    window_open: bool,
     /// Setup was finished, then a permission went missing (N1, #206): the
     /// window says so and closes when both are back.
     asked_again: bool,
@@ -192,6 +195,7 @@ impl Onboarding {
                 terms_accepted: false,
                 seen_granted: None,
                 granted_now: false,
+                window_open: false,
                 asked_again: false,
                 told: Vec::new(),
                 accessibility_asked: false,
@@ -345,7 +349,20 @@ impl Onboarding {
     /// while setup was on the window: the window then comes to the front.
     pub fn take_grant(&self) -> bool {
         let mut state = self.lock();
-        state.view == View::Onboarding && std::mem::take(&mut state.granted_now)
+        // Taken even when nothing acts on it, so a grant that came while the
+        // window was closed is dropped, not kept for the next open.
+        let granted = std::mem::take(&mut state.granted_now);
+        granted && state.view == View::Onboarding && state.window_open
+    }
+
+    /// The window was shown (`true`) or hidden or closed (`false`). Closing
+    /// drops a grant not yet acted on, so it can't reopen the window later.
+    pub fn set_window_open(&self, open: bool) {
+        let mut state = self.lock();
+        state.window_open = open;
+        if !open {
+            state.granted_now = false;
+        }
     }
 
     /// The user asked for Accessibility.
@@ -706,12 +723,41 @@ mod tests {
         );
     }
 
+    /// TOS1 round 4: closing setup stops grants from bringing it back, and
+    /// opening it again from the menu resumes that.
+    #[test]
+    fn tos1_a_grant_after_the_window_closed_does_not_reopen_it() {
+        let onboarding = Onboarding::new();
+        onboarding.open(Readiness::default());
+        onboarding.set_window_open(true);
+        let permissions = granted(false, false);
+        onboarding.status(&permissions, false);
+        onboarding.set_window_open(false);
+        permissions.set(Permission::Microphone, Granted);
+        onboarding.status(&permissions, false);
+        assert!(!onboarding.take_grant(), "closed: no focus steal");
+        onboarding.set_window_open(true);
+        assert!(!onboarding.take_grant(), "the dropped grant stays dropped");
+        permissions.set(Permission::Accessibility, Granted);
+        onboarding.status(&permissions, false);
+        assert!(onboarding.take_grant(), "reopened: grants count again");
+
+        // A grant seen just before the close can't act after it.
+        permissions.set(Permission::Microphone, Denied);
+        onboarding.status(&permissions, false);
+        permissions.set(Permission::Microphone, Granted);
+        onboarding.status(&permissions, false);
+        onboarding.set_window_open(false);
+        assert!(!onboarding.take_grant());
+    }
+
     /// TOS1: a permission turning granted while setup is open brings the
     /// window forward, once; the first read and an already granted one don't.
     #[test]
     fn tos1_a_permission_turning_granted_activates_the_window_once() {
         let onboarding = Onboarding::new();
         onboarding.open(Readiness::default());
+        onboarding.set_window_open(true);
         let permissions = granted(false, false);
         onboarding.status(&permissions, false);
         assert!(!onboarding.take_grant(), "the first read is the baseline");

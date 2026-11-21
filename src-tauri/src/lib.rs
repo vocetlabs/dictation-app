@@ -297,9 +297,7 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 setup_left(window.app_handle());
-                if let Err(error) = window.hide() {
-                    tracing::warn!(%error, "could not hide the settings window");
-                }
+                window::hide(window.app_handle());
             }
         })
         .setup(move |app| {

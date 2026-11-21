@@ -58,6 +58,9 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, view: View) {
     if let Err(error) = fit(&window, view) {
         tracing::warn!(%error, "could not size the settings window");
     }
+    if let Some(onboarding) = app.try_state::<std::sync::Arc<crate::onboarding::Onboarding>>() {
+        onboarding.set_window_open(true);
+    }
     let shown = window
         .set_title(title(view))
         .and_then(|()| window.unminimize())
@@ -71,6 +74,9 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, view: View) {
 
 /// Hides the window.
 pub fn hide<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(onboarding) = app.try_state::<std::sync::Arc<crate::onboarding::Onboarding>>() {
+        onboarding.set_window_open(false);
+    }
     let Some(window) = app.get_webview_window(MAIN) else {
         return;
     };
