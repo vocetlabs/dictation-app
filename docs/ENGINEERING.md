@@ -69,7 +69,7 @@ adapter. Tauri is a thin layer on top.
 - Updates (M5.4): `tauri-plugin-updater` trusts only the owner's minisign
   public key in `tauri.conf.json` and fetches `latest.json` from this repository's
   GitHub Releases (`vocetlabs/dictation-app`; only download URLs under its
-  `releases/download/` are accepted; the old `dictation-app-releases` is
+  `releases/download/`, or the former owner's `gargankit90/dictation-app/releases/download/` (GitHub redirects it), are accepted; the old `dictation-app-releases` is
   archived and was never used for a release). It checks quietly at launch and from
   the tray; nothing installs until the user picks "Install and restart",
   which restarts through the normal exit (`request_restart`, as M5.2's
