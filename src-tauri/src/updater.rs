@@ -156,10 +156,6 @@ fn endpoints(updater_config: Option<&Value>) -> Vec<Url> {
         .unwrap_or_default()
 }
 
-/// Release-download path of the repository's former owner, still accepted for
-/// package URLs (GitHub redirects it to the current repository).
-const LEGACY_PACKAGE_PREFIX: &str = "/gargankit90/dictation-app/releases/download/";
-
 /// Why a package URL from the manifest must not be fetched, or `None`.
 ///
 /// The manifest comes from our endpoint, but its package URL is just data:
@@ -186,13 +182,6 @@ pub fn package_url_problem(
             |at| format!("{}download/", &endpoint.path()[..at + "/releases/".len()]),
         );
         let path = package.path();
-        // The repository moved from `gargankit90/` to `vocetlabs/`; a manifest
-        // may still name the old release path, which GitHub redirects.
-        let legacy = endpoint.host_str() == Some("github.com")
-            && endpoint
-                .path()
-                .starts_with("/vocetlabs/dictation-app/releases/")
-            && path.starts_with(LEGACY_PACKAGE_PREFIX);
         // Encoded slashes and backslashes could smuggle a different path
         // past the prefix check; dot segments are already resolved by `Url`.
         let lower = path.to_ascii_lowercase();
@@ -202,7 +191,7 @@ pub fn package_url_problem(
         package.scheme() == endpoint.scheme()
             && package.host_str() == endpoint.host_str()
             && package.port_or_known_default() == endpoint.port_or_known_default()
-            && (path.starts_with(prefix.as_str()) || legacy)
+            && path.starts_with(prefix.as_str())
     });
     if same_place {
         None
@@ -830,27 +819,16 @@ mod tests {
         assert!(!ok(
             "https://github.com/vocetlabs/dictation-app-releases/releases/download/v0.2.0/a.tar.gz"
         ));
-        // The former owner's release path is still accepted (the repository moved).
-        assert!(ok(
+        // Other owners, including the former one and the archived releases-only
+        // repository, are refused.
+        assert!(!ok(
+            "https://github.com/someone/dictation-app/releases/download/v0.2.0/a.tar.gz"
+        ));
+        assert!(!ok(
             "https://github.com/gargankit90/dictation-app/releases/download/v0.2.0/a.tar.gz"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/latest/download/a.tar.gz"
-        ));
-        assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/archive/main.tar.gz"
-        ));
-        assert!(!ok(
-            "https://github.com/gargankit90/dictation-app.evil/releases/download/v1/a.tar.gz"
-        ));
-        assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/../../x/a"
-        ));
-        assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/v1%2F..%2Fa"
-        ));
-        assert!(!ok(
-            "https://evil.example/gargankit90/dictation-app/releases/download/v1/a"
+            "https://github.com/gargankit90/dictation-app-releases/releases/download/v0.2.0/a.tar.gz"
         ));
         // Look-alike repositories and hosts.
         assert!(!ok(

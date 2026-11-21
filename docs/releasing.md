@@ -21,7 +21,7 @@ The updater trusts one **minisign public key** from `tauri.conf.json`
 any download whose signature doesn't verify against it, or whose signed
 version differs from the announced one (`requireSignedVersion`). It fetches
 `https://github.com/vocetlabs/dictation-app/releases/latest/download/latest.json`
-(this repository's own releases; the separate `vocetlabs/dictation-app-releases`
+(this repository's own releases; the separate `gargankit90/dictation-app-releases`
 is archived and was never used for a release), once at launch
 (quietly: a dialog only when there is an update) and from the tray's
 Settings → General → **Check now**.
