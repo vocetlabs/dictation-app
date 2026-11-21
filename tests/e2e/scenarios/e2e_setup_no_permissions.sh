@@ -55,6 +55,9 @@ e2e_setup_no_permissions() {
     wait_for_log 'PermissionMissing' 15
   expect "Welcome is on screen" \
     ax_ok wait-text "$APP_NAME" "$NOPERM_WINDOW" "Talk instead of type" 10
+  # Get started is blocked ("Loading…") until the page has loaded its settings:
+  # a press before that misses, and every later step then fails (a slow full run).
+  expect "Get started is not blocked" ax_ok wait-no-text "$APP_NAME" "$NOPERM_WINDOW" "Loading…" 15
   expect "press Get started" ax_ok press "$APP_NAME" "$NOPERM_WINDOW" "Get started"
 
   expect "Speech offers the English model" \

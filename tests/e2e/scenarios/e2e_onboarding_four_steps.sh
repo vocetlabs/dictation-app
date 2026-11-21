@@ -48,6 +48,9 @@ e2e_onboarding_four_steps() {
   expect "its window is on screen" ax_ok wait-window "$APP_NAME" "$FOUR_WINDOW" 10
   expect "Welcome" ax_ok wait-text "$APP_NAME" "$FOUR_WINDOW" "Talk instead of type" 10
   expect "the rail has the four steps" ax_ok wait-text "$APP_NAME" "$FOUR_WINDOW" "Permissions" 5
+  # Get started is blocked ("Loading…") until the page has loaded its settings:
+  # a press before that misses, and every later step then fails (a slow full run).
+  expect "Get started is not blocked" ax_ok wait-no-text "$APP_NAME" "$FOUR_WINDOW" "Loading…" 15
   expect "press Get started" ax_ok press "$APP_NAME" "$FOUR_WINDOW" "Get started"
 
   expect "Speech recommends the English model, with the whole download's size" \

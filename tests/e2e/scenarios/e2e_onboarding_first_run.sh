@@ -43,6 +43,9 @@ e2e_onboarding_first_run() {
   expect "right under the demo, the Terms line" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "you agree to the" 5
   obs_shot "1-welcome-$SHOT_LOOK"
+  # Get started is blocked ("Loading…") until the page has loaded its settings:
+  # a press before that misses, and every later step then fails (a slow full run).
+  expect "Get started is not blocked" ax_ok wait-no-text "$APP_NAME" "$ONBOARDING_WINDOW" "Loading…" 15
   expect "press Get started" ax_ok press "$APP_NAME" "$ONBOARDING_WINDOW" "Get started"
   expect "Speech asks for the engine" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "How should Vocet transcribe" 10

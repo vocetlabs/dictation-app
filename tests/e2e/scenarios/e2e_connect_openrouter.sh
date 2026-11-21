@@ -60,6 +60,9 @@ e2e_connect_openrouter() {
     wait_for_log 'onboarding shown at launch step=Welcome' 30
   expect "Welcome is on screen" \
     ax_ok wait-text "$APP_NAME" "$CONNECT_WINDOW" "Talk instead of type" 10
+  # Get started is blocked ("Loading…") until the page has loaded its settings:
+  # a press before that misses, and every later step then fails (a slow full run).
+  expect "Get started is not blocked" ax_ok wait-no-text "$APP_NAME" "$CONNECT_WINDOW" "Loading…" 15
   expect "press Get started" ax_ok press "$APP_NAME" "$CONNECT_WINDOW" "Get started"
   expect "Speech offers OpenRouter" \
     ax_ok wait-text "$APP_NAME" "$CONNECT_WINDOW" "Use OpenRouter" 15
