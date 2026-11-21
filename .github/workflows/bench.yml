@@ -15,7 +15,7 @@ on:
       app:
         description: App (apps/<app>.json with hosted_setup true)
         type: choice
-        options: [handy]
+        options: [handy, voiceink]
       size:
         description: smoke (one synthetic dictation) or full (all clips)
         type: choice
@@ -26,11 +26,16 @@ permissions:
 
 jobs:
   bench:
-    name: ${{ inputs.app || 'handy' }} ${{ inputs.size || 'smoke' }}
+    name: ${{ matrix.app }} ${{ inputs.size || 'smoke' }}
     runs-on: macos-15
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        # A dispatch runs the chosen app; a push smoke-tests every app with an unattended setup.
+        app: ${{ fromJSON(inputs.app && format('["{0}"]', inputs.app) || '["handy","voiceink"]') }}
     env:
-      APP: ${{ inputs.app || 'handy' }}
+      APP: ${{ matrix.app }}
       SIZE: ${{ inputs.size || 'smoke' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,7 +48,9 @@ jobs:
           ./bench machine --ci
       - name: App
         working-directory: eval/app_bench
-        run: ./bench setup --app "$APP" --ci
+        run: |
+          ./bench setup --app "$APP" --ci
+          ./bench windows
       - name: Clips
         if: env.SIZE == 'full'
         working-directory: eval/app_bench
