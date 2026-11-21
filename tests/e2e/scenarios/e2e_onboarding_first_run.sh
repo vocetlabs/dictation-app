@@ -33,11 +33,14 @@ e2e_onboarding_first_run() {
   expect "onboarding shows at launch, at Welcome" \
     wait_for_log 'onboarding shown at launch step=Welcome' 20
   expect "its window is on screen" ax_ok wait-window "$APP_NAME" "$ONBOARDING_WINDOW" 10
+  # The smallest setup window: nothing may scroll or get cut off in it.
+  expect "the window is at its smallest, 680 by 520" \
+    obs_set_frame "$APP_NAME" "$ONBOARDING_WINDOW" 100 60 680 520
   expect "it says what the app does" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "Talk instead of type" 10
   expect "with no choice to make, only Get started" \
     ax_ok wait-no-text "$APP_NAME" "$ONBOARDING_WINDOW" "Share usage" 2
-  expect "under it, the Terms line" \
+  expect "right under the demo, the Terms line" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "you agree to the" 5
   obs_shot "1-welcome-$SHOT_LOOK"
   expect "press Get started" ax_ok press "$APP_NAME" "$ONBOARDING_WINDOW" "Get started"

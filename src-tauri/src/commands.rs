@@ -580,6 +580,7 @@ pub(crate) fn read_onboarding(
     let status = onboarding.status(&*permissions.0, diagnostics.hotkey_is_down());
     usage::setup_status_read(usage, onboarding, &status);
     if onboarding.take_grant() {
+        tracing::info!("a permission was granted: bringing setup to the front");
         shell.0.show_onboarding_window();
     }
     status

@@ -18,6 +18,7 @@
 
 CONNECT_KEY=q3connectkey4e9d7a1c
 CONNECT_WINDOW="Set up"
+CONNECT_LOOK="${E2E_APPEARANCE:-light}"
 
 # The provider's own events say the attempt went through, in order.
 connect_provider_saw() {
@@ -48,6 +49,7 @@ e2e_connect_openrouter() {
   KEY_CLEANUP_HOOK=provider_cleanup
   fresh_app_state
   settings_reset
+  obs_appearance "$CONNECT_LOOK"
   expect "the fake provider starts, accepting the made-up key" provider_start "$CONNECT_KEY"
   connect_key_file
 
@@ -83,6 +85,7 @@ e2e_connect_openrouter() {
   expect "the fake was asked for the credit with the good key" \
     connect_provider_saw '^credits auth=good'
   expect "the setup screen shows no part of the key" connect_window_lacks_key_hint
+  obs_shot "connect-connected-$CONNECT_LOOK"
   expect "the key was saved and the engine rebuilt from it" \
     wait_for_log_count 'engine rebuilt' $((rebuilt + 1)) 15
   expect "the engine has the key" wait_for_log 'engine settings provider=openrouter .*has_key=true' 15
@@ -128,10 +131,18 @@ e2e_connect_openrouter() {
     ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "\$4.82 left" 15
   expect "the sheet shows the last four characters of the key, and no more" \
     ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Key ending ${CONNECT_KEY: -4}" 10
+  expect "while connected there is no paste link or Connect again" \
+    ax_ok wait-no-text "$APP_NAME" "$SETTINGS_WINDOW" "Paste a key instead" 2
+  obs_shot "sheet-connected-$CONNECT_LOOK" "Settings"
   rebuilt=$(log_count 'engine rebuilt')
   expect "press Disconnect" ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" Disconnect
   expect "the sheet says the key is removed" \
     ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Disconnected. The key is removed." 15
+  expect "not connected: the explainer, one Connect button, no Add credits or paste link" \
+    ax_ok wait-no-text "$APP_NAME" "$SETTINGS_WINDOW" "Paste a key instead" 2
+  expect "no Add credits without an account" \
+    ax_ok wait-no-text "$APP_NAME" "$SETTINGS_WINDOW" "Add credits" 2
+  obs_shot "sheet-not-connected-$CONNECT_LOOK" "Settings"
   expect "the engine was rebuilt without the key" \
     wait_for_log_count 'engine rebuilt' $((rebuilt + 1)) 15
   expect "it has no key" \
@@ -146,5 +157,6 @@ e2e_connect_openrouter() {
 
   [ "$SCENARIO_FAILED" = 0 ] || dump_ui e2e_connect_openrouter
   collect_log e2e_connect_openrouter
+  [ "$CONNECT_LOOK" = light ] || obs_appearance light
   textedit_close
 }
