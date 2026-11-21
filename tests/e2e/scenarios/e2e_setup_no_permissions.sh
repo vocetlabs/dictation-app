@@ -58,7 +58,7 @@ e2e_setup_no_permissions() {
   expect "press Get started" ax_ok press "$APP_NAME" "$NOPERM_WINDOW" "Get started"
 
   expect "Speech offers the English model" \
-    ax_ok wait-text "$APP_NAME" "$NOPERM_WINDOW" "English · 4.4 GB download (speech + cleanup)" 15
+    ax_ok wait-text "$APP_NAME" "$NOPERM_WINDOW" "one-time 4.4 GB download" 15
   expect "step 2 doesn't mention the hotkey" noperm_listen_message_absent
   expect "choose this Mac" ax_ok radio-press "$APP_NAME" "$NOPERM_WINDOW" "Use this Mac"
   expect "press Download and continue" \

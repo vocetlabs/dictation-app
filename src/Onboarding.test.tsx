@@ -4,7 +4,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LocalModelInfo_Serialize,
   OnboardingStatus,
@@ -18,13 +18,16 @@ import { App } from "./App";
 import { Onboarding, RELAUNCH_AFTER_POLLS, STEPS } from "./Onboarding";
 import css from "./settings.css?raw";
 import {
-  KEY_CARD_COPY,
+  KEY_POINTS,
   KEY_REASON,
   KEY_SAVED,
-  MODEL_COPY,
+  KEY_SUMMARY,
+  MODEL_SUMMARY,
   OPENROUTER_EXPLAINER,
   SpeechStep,
+  modelPoints,
 } from "./onboarding/SpeechStep";
+import { PASTE_AFTER_MS } from "./settings/connection";
 import {
   ASKED_AGAIN,
   BOTH_REASON,
@@ -100,6 +103,11 @@ class Backend {
     message: null,
   };
   testResult: string | null = null;
+  /** What `openrouter_credits` answers (`null`: nothing readable). */
+  credit: { balance: number | null; key_limit_left: number | null } | null = {
+    balance: 4.82,
+    key_limit_left: null,
+  };
   /** Fails the command named, with the message (a string, as the app sends). */
   failing = new Map<string, string>();
   /** Holds the command named until the promise settles. */
@@ -181,6 +189,11 @@ class Backend {
         return args.enabled;
       case "saved_key_hint":
         return this.keys.openrouter ? "sk-or-…cdef" : null;
+      case "openrouter_credits": {
+        const held = this.holds.get(command);
+        if (held !== undefined) return held.then(() => null);
+        return this.keys.openrouter ? this.credit : null;
+      }
       case "connect_openrouter": {
         const failure = this.failing.get(command);
         // eslint-disable-next-line @typescript-eslint/only-throw-error
@@ -384,7 +397,12 @@ describe("Welcome", () => {
       expect(primary("Get started").disabled).toBe(false);
     });
     const content = document.querySelector<HTMLElement>(".ob-content");
-    expect(content?.querySelector("input, select, textarea, button, a")).toBeNull();
+    // The only controls are the two links in the Terms line.
+    expect(
+      Array.from(content?.querySelectorAll("input, select, textarea, button, a") ?? []).map(
+        (control) => control.textContent,
+      ),
+    ).toEqual(["Terms", "Privacy Policy"]);
     expect(content?.textContent).not.toMatch(
       /usage|error events|anonymous|sharing|share|analytics/i,
     );
@@ -437,13 +455,15 @@ describe("Welcome", () => {
     expect(backend.step).toBe("speech");
   });
 
-  it("TOS1: says the person agrees to the Terms and Privacy Policy, under Get started", async () => {
+  it("TOS1 round 3: says the person agrees to the Terms and Privacy Policy, right under the demo", async () => {
     show();
     await screen.findByText("Talk instead of type");
     const line = found(".ob-terms");
     expect(line.textContent).toBe("By continuing, you agree to the Terms and Privacy Policy.");
-    // Under the footer's Get started, not in the scrolling content and not a checkbox.
-    expect(document.querySelector(".ob-footer")?.nextElementSibling?.contains(line)).toBe(true);
+    // Right below the demo card, above the footer's divider; not a checkbox.
+    expect(document.querySelector(".ob-demo")?.nextElementSibling).toBe(line);
+    expect(document.querySelector(".ob-content")?.contains(line)).toBe(true);
+    expect(document.querySelector(".ob-footer")?.contains(line)).toBe(false);
     expect(screen.queryByRole("checkbox")).toBeNull();
     fireEvent.click(within(line).getByRole("button", { name: "Terms" }));
     fireEvent.click(within(line).getByRole("button", { name: "Privacy Policy" }));
@@ -529,7 +549,7 @@ describe("Speech", () => {
 
   it("Q3: a fresh install selects OpenRouter, listed first, with Continue to Connect", async () => {
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     const radios = screen.getAllByRole<HTMLInputElement>("radio", {
       name: /OpenRouter|Use this Mac/,
     });
@@ -543,35 +563,65 @@ describe("Speech", () => {
     backend.cleanup = [{ ...GEMMA }];
     backend.models = [{ ...PARAKEET, size_bytes: 1_319_830_656 }];
     show();
-    await screen.findByText("English · 4.4 GB download (speech + cleanup)");
+    await screen.findByText("Works offline after a one-time 4.4 GB download");
   });
 
-  it("TOS1: the OpenRouter card explains OpenRouter and names no price per hour", async () => {
+  it("TOS1: until the cleanup model is listed there is no size, so none is claimed", async () => {
     show();
-    const copy = await screen.findByText(KEY_CARD_COPY);
-    expect(copy.textContent).toContain("OpenRouter is one account for many AI models.");
-    expect(copy.textContent).toContain(
-      "You add a few dollars of credit and pay only for what you use.",
+    await screen.findByText(MODEL_SUMMARY);
+    screen.getByText("Works offline after a one-time download");
+    expect(document.querySelector(".ob-main")?.textContent).not.toMatch(/\d GB/);
+  });
+
+  it("TOS1 round 3: each card has a title, a one-line summary and short points", async () => {
+    backend.cleanup = [{ ...GEMMA }];
+    backend.models = [{ ...PARAKEET, size_bytes: 1_319_830_656 }];
+    show();
+    await screen.findByText("Works offline after a one-time 4.4 GB download");
+    const [openrouter, mac] = Array.from(document.querySelectorAll<HTMLElement>(".ob-option"));
+    expect(openrouter?.querySelector(".ob-card-title")?.textContent).toBe(
+      "Use OpenRouter Recommended",
     );
-    expect(copy.textContent).toContain(
-      "Needs internet. Your speech goes through your own OpenRouter account.",
-    );
-    expect(copy.textContent).not.toMatch(/\$|cents|per hour/i);
+    expect(openrouter?.querySelector(".ob-caption")?.textContent).toBe(KEY_SUMMARY);
+    expect(
+      Array.from(openrouter?.querySelectorAll("li") ?? []).map((item) => item.textContent),
+    ).toEqual([...KEY_POINTS]);
+    expect(mac?.querySelector(".ob-card-title")?.textContent).toBe("On this Mac");
+    expect(mac?.querySelector(".ob-caption")?.textContent).toBe(MODEL_SUMMARY);
+    expect(Array.from(mac?.querySelectorAll("li") ?? []).map((item) => item.textContent)).toEqual([
+      ...modelPoints("4.4 GB"),
+    ]);
+    // Three or four points each, and the facts the owner gave.
+    expect(KEY_POINTS.length).toBeGreaterThanOrEqual(3);
+    expect(KEY_POINTS.length).toBeLessThanOrEqual(4);
+    expect(modelPoints(null)).toHaveLength(4);
+    expect(KEY_POINTS).toContain("OpenRouter is one account for many AI models.");
+    expect(KEY_POINTS).toContain("Most accurate");
+    expect(KEY_POINTS).toContain("Needs internet");
+    expect(modelPoints("4.4 GB")).toContain("Free, no account");
+    expect(modelPoints("4.4 GB")).toContain("Your audio and text never leave your Mac");
+  });
+
+  it("TOS1 round 3: the cards claim no price, speed or memory figure", () => {
+    const words = [KEY_SUMMARY, MODEL_SUMMARY, ...KEY_POINTS, ...modelPoints("4.4 GB")].join(" ");
+    expect(words).not.toMatch(/\$|cents|per hour|\bms\b|seconds|RAM|memory/i);
+    // The only number is the download's size, from the catalogue.
+    expect(words.match(/\d/g)?.join("")).toBe("44");
   });
 
   it("criterion 3: English preselects Parakeet English, with its real size", async () => {
     show();
-    const name = await screen.findByText("English");
+    const name = await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     expect(name).toBeTruthy();
     expect(screen.getByText("On this Mac")).toBeTruthy();
-    expect(screen.getByText(MODEL_COPY)).toBeTruthy();
+    expect(screen.getByText(MODEL_SUMMARY)).toBeTruthy();
     expect(primary("Download and continue").disabled).toBe(false);
   });
 
   it("criterion 3: Download and continue chooses, starts the download and moves on", async () => {
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(primary("Download and continue"));
     await screen.findByText("Two permissions");
@@ -584,7 +634,7 @@ describe("Speech", () => {
   it("criterion 3: a model already here says Continue and downloads nothing", async () => {
     backend.model(PARAKEET.id).state = "ready";
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(primary("Continue"));
     await screen.findByText("Two permissions");
@@ -599,7 +649,7 @@ describe("Speech", () => {
     backend.cleanup = [{ ...GEMMA, state: "partial", downloaded_bytes: 1_000_000_000 }];
     backend.settings = { ...backend.settings, transcription: "local" };
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     // The label says a download is left.
     await waitFor(() => {
@@ -617,7 +667,7 @@ describe("Speech", () => {
     backend.cleanup = [{ ...GEMMA, state: "downloading", downloaded_bytes: 1_000_000_000 }];
     backend.settings = { ...backend.settings, transcription: "local" };
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(await screen.findByRole("button", { name: "Download and continue" }));
     await screen.findByText("Two permissions");
@@ -627,7 +677,7 @@ describe("Speech", () => {
   it("Q4 round 7: a missing speech model starts the download even while the cleanup model downloads", async () => {
     backend.cleanup = [{ ...GEMMA, state: "downloading", downloaded_bytes: 1_000_000_000 }];
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(await screen.findByRole("button", { name: "Download and continue" }));
     await screen.findByText("Two permissions");
@@ -644,7 +694,7 @@ describe("Speech", () => {
     })(backend.handle);
     mockIPC(backend.handle);
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(primary("Download and continue"));
     await screen.findByText("The disk is full.");
@@ -654,7 +704,7 @@ describe("Speech", () => {
   /** Selects OpenRouter on the two choices, and nothing else happens. */
   async function selectCloud() {
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     // OpenRouter is the default: move off it and back, so the choice is written.
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(screen.getByRole("radio", { name: /Use OpenRouter/ }));
@@ -700,7 +750,7 @@ describe("Speech", () => {
   it("Q4 round 6: pressing the preselected OpenRouter card keeps the choice after Back", async () => {
     // A click on a checked radio fires no change, so the card records it on click.
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     const card = () => screen.getByRole<HTMLInputElement>("radio", { name: /Use OpenRouter/ });
     expect(card().checked).toBe(true);
     fireEvent.click(card());
@@ -724,7 +774,7 @@ describe("Speech", () => {
 
   it("Q3: Continue opens the screen, Back returns with all as it was", async () => {
     show();
-    await screen.findByText("English");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: /Use OpenRouter/ }));
     fireEvent.click(primary("Continue"));
     await screen.findByText("Connect OpenRouter", { selector: "h1, h2" });
@@ -743,7 +793,7 @@ describe("Speech", () => {
     );
   });
 
-  it("TOS1: not connected: one sentence, one primary button, a small paste link, nothing else", async () => {
+  it("TOS1: not connected: one sentence and one primary button; no paste link up front", async () => {
     await openConnectScreen();
     // The saved-key lookup has settled once the footer gives its reason.
     await screen.findByText(KEY_REASON);
@@ -753,10 +803,8 @@ describe("Speech", () => {
     const panel = found("#connect-panel");
     expect(panel.querySelectorAll("button.primary")).toHaveLength(1);
     expect(within(panel).getByRole("button", { name: "Connect OpenRouter" })).toBeTruthy();
-    expect(within(panel).getByRole("button", { name: "Paste a key instead" }).className).toBe(
-      "link",
-    );
     for (const gone of [
+      "Paste a key instead",
       "Add credits",
       "Disconnect",
       "Connect again",
@@ -823,18 +871,23 @@ describe("Speech", () => {
     expect(backend.named("cancel_connect")).toHaveLength(1);
   });
 
-  it("TOS1: connected: a tick, the key hint, one Add credits link and Continue; no reconnect or paste", async () => {
+  it("TOS1 round 3: connected: a tick, the credit left with an Add credits button beside it, Continue", async () => {
     backend.keys.openrouter = true;
     await openConnectScreen();
     await screen.findByText(KEY_SAVED);
-    await screen.findByText("sk-or-…cdef");
+    const left = await screen.findByText("$4.82 left");
     expect(primary("Continue").disabled).toBe(false);
     const credits = screen.getByRole("button", { name: "Add credits" });
-    expect(credits.className).toBe("link");
+    // A button, beside the balance (the same row), not a link.
+    expect(credits.className).toBe("");
+    expect(credits.parentElement?.className).toBe("ob-credit");
+    expect(credits.parentElement?.contains(left)).toBe(true);
     fireEvent.click(credits);
     await waitFor(() => {
       expect(backend.named("open_link")[0]?.args).toEqual({ link: "openrouter_credits" });
     });
+    // The key isn't shown in setup at all.
+    expect(document.body.textContent).not.toMatch(/sk-or|cdef|Key ending/);
     for (const gone of [
       "Connect again",
       "Connect OpenRouter",
@@ -846,8 +899,139 @@ describe("Speech", () => {
     }
   });
 
-  it("Q3: Paste a key instead tests and saves a typed key", async () => {
+  it("TOS1 round 3: a key with a spending limit shows what is left of it", async () => {
+    backend.keys.openrouter = true;
+    backend.credit = { balance: 4.8, key_limit_left: 2.5 };
     await openConnectScreen();
+    await screen.findByText("$4.80 left");
+    screen.getByText("Spending limit: $2.50 left");
+  });
+
+  it.each([
+    ["nothing readable", null],
+    ["no number in it", { balance: null, key_limit_left: null }],
+  ])(
+    "TOS1 round 3: with %s, just the tick and the button, and Continue works",
+    async (_n, credit) => {
+      backend.keys.openrouter = true;
+      backend.credit = credit;
+      await openConnectScreen();
+      await screen.findByText(KEY_SAVED);
+      await waitFor(() => {
+        expect(backend.named("openrouter_credits")).toHaveLength(1);
+      });
+      expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+      expect(document.querySelector("#connect-credit")).toBeNull();
+      expect(primary("Continue").disabled).toBe(false);
+    },
+  );
+
+  it("TOS1 round 3: a slow or failing balance never blocks Continue", async () => {
+    backend.keys.openrouter = true;
+    backend.holds.set("openrouter_credits", new Promise<void>(() => undefined));
+    await openConnectScreen();
+    await screen.findByText(KEY_SAVED);
+    expect(primary("Continue").disabled).toBe(false);
+    expect(document.querySelector("#connect-credit")).toBeNull();
+  });
+
+  it("TOS1 round 3: the balance is asked again when the window gets focus back", async () => {
+    backend.keys.openrouter = true;
+    await openConnectScreen();
+    await screen.findByText("$4.82 left");
+    backend.credit = { balance: 9.5, key_limit_left: null };
+    fireEvent.focus(window);
+    await screen.findByText("$9.50 left");
+    expect(backend.named("openrouter_credits").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("TOS1 round 3: a failed refresh keeps the amount already shown", async () => {
+    backend.keys.openrouter = true;
+    await openConnectScreen();
+    await screen.findByText("$4.82 left");
+    backend.credit = null;
+    fireEvent.focus(window);
+    await waitFor(() => {
+      expect(backend.named("openrouter_credits").length).toBeGreaterThanOrEqual(2);
+    });
+    screen.getByText("$4.82 left");
+  });
+
+  it("TOS1 round 3: not connected, the balance isn't asked for", async () => {
+    await openConnectScreen();
+    await screen.findByText(KEY_REASON);
+    expect(backend.named("openrouter_credits")).toEqual([]);
+  });
+
+  it("TOS1 round 3: Having trouble? Paste a key instead appears only after the sign-in waits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      backend.holds.set("connect_openrouter", new Promise<void>(() => undefined));
+      await openConnectScreen();
+      fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+      await screen.findByText("Waiting for OpenRouter in your browser…");
+      expect(screen.queryByRole("button", { name: "Paste a key instead" })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PASTE_AFTER_MS - 1000);
+      });
+      expect(screen.queryByRole("button", { name: "Paste a key instead" })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      screen.getByText("Having trouble?");
+      screen.getByRole("button", { name: "Paste a key instead" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("TOS1 round 3: a key pasted while the sign-in waits ends the wait and is saved", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      backend.holds.set("connect_openrouter", new Promise<void>(() => undefined));
+      await openConnectScreen();
+      fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+      await screen.findByText("Waiting for OpenRouter in your browser…");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PASTE_AFTER_MS + 500);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Paste a key instead" }));
+      fireEvent.change(await screen.findByLabelText("OpenRouter API key"), {
+        target: { value: KEY },
+      });
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Test & Save" }).disabled).toBe(
+        false,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Test & Save" }));
+      await screen.findByText(KEY_SAVED);
+      expect(backend.named("cancel_connect")).toHaveLength(1);
+      expect(backend.named("set_api_key")).toHaveLength(1);
+      expect(primary("Continue").disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("TOS1 round 3: the paste link also appears after a failed sign-in, and stays", async () => {
+    backend.failing.set("connect_openrouter", "Connecting took too long. Try again.");
+    await openConnectScreen();
+    expect(screen.queryByRole("button", { name: "Paste a key instead" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+    await screen.findByText("Connecting took too long. Try again.");
+    screen.getByRole("button", { name: "Paste a key instead" });
+  });
+
+  /** A sign-in that failed: the paste link is then offered. */
+  async function afterFailedSignIn() {
+    backend.failing.set("connect_openrouter", "Connecting took too long. Try again.");
+    await openConnectScreen();
+    fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+    await screen.findByText("Connecting took too long. Try again.");
+    backend.failing.delete("connect_openrouter");
+  }
+
+  it("Q3: Paste a key instead tests and saves a typed key", async () => {
+    await afterFailedSignIn();
     fireEvent.click(screen.getByRole("button", { name: "Paste a key instead" }));
     const field = await screen.findByLabelText("OpenRouter API key");
     expect(field.getAttribute("type")).toBe("password");
@@ -860,7 +1044,7 @@ describe("Speech", () => {
 
   it("Q3: a pasted key the provider rejects keeps Continue locked, and saves nothing", async () => {
     backend.testResult = "OpenRouter rejected this API key.";
-    await openConnectScreen();
+    await afterFailedSignIn();
     fireEvent.click(screen.getByRole("button", { name: "Paste a key instead" }));
     fireEvent.change(await screen.findByLabelText("OpenRouter API key"), {
       target: { value: KEY },
@@ -874,15 +1058,14 @@ describe("Speech", () => {
   describe("U11 criterion 5: the cards' exact wording", () => {
     it("English", async () => {
       show();
-      await screen.findByText("English");
-      screen.getByText("Runs on this Mac. Works offline after a one-time download.");
-      screen.getByText("Use OpenRouter");
-      screen.getByText(KEY_CARD_COPY);
+      await screen.findByText(MODEL_SUMMARY);
+      screen.getByText("Use OpenRouter", { exact: false });
+      screen.getByText(KEY_SUMMARY);
     });
 
     it("no catalogue name and no refused wording, on any of the screens", async () => {
       show();
-      await screen.findByText("English");
+      await screen.findByText(MODEL_SUMMARY);
       fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
       const shown = () => document.querySelector(".ob-main")?.textContent ?? "";
       const clean = () => {

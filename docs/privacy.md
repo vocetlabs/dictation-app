@@ -29,7 +29,8 @@ and field, and what stays on your Mac. If the two ever disagree, fix both.
   Mac") and a callback to a short-lived listener on your own Mac (`127.0.0.1`,
   closed as soon as the sign-in ends). The key OpenRouter makes goes straight
   to your Keychain and is never shown in full or logged. **Add credits** opens
-  `openrouter.ai` in your browser; nothing is sent from Vocet.
+  `openrouter.ai` in your browser; nothing is sent from Vocet. Vocet asks
+  OpenRouter for your credit balance, with your key, to show it in the app.
 
 Vocet can share usage events and error reports so we can see
 what works and what breaks. This page lists everything it sends. The list is

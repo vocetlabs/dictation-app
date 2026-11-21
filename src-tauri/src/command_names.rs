@@ -14,6 +14,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "connect_openrouter",
     "cancel_connect",
     "saved_key_hint",
+    "openrouter_credits",
     "get_onboarding",
     "accept_terms",
     "request_permission",

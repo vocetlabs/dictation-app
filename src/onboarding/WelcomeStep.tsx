@@ -47,31 +47,6 @@ export function WelcomeStep({ parts, settings, onContinue }: Props) {
       parts={{ ...parts, error: parts.error ?? problem }}
       title="Talk instead of type"
       large
-      below={
-        <p className="ob-terms">
-          By continuing, you agree to the{" "}
-          <button
-            type="button"
-            className="link"
-            onClick={() => {
-              open("terms");
-            }}
-          >
-            Terms
-          </button>{" "}
-          and{" "}
-          <button
-            type="button"
-            className="link"
-            onClick={() => {
-              open("privacy");
-            }}
-          >
-            Privacy Policy
-          </button>
-          .
-        </p>
-      }
       primary={{
         label: "Get started",
         onClick: () => void getStarted(),
@@ -83,6 +58,29 @@ export function WelcomeStep({ parts, settings, onContinue }: Props) {
         Hold {keySpokenName(key)}, say what you mean, and let go. The words land at your cursor.
       </p>
       <WelcomeDemo keyLabel={keyLongLabel(key)} />
+      <p className="ob-terms">
+        By continuing, you agree to the{" "}
+        <button
+          type="button"
+          className="link"
+          onClick={() => {
+            open("terms");
+          }}
+        >
+          Terms
+        </button>{" "}
+        and{" "}
+        <button
+          type="button"
+          className="link"
+          onClick={() => {
+            open("privacy");
+          }}
+        >
+          Privacy Policy
+        </button>
+        .
+      </p>
     </StepFrame>
   );
 }

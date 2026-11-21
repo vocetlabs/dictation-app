@@ -51,7 +51,7 @@ e2e_onboarding_four_steps() {
   expect "press Get started" ax_ok press "$APP_NAME" "$FOUR_WINDOW" "Get started"
 
   expect "Speech recommends the English model, with the whole download's size" \
-    ax_ok wait-text "$APP_NAME" "$FOUR_WINDOW" "English · 4.4 GB download (speech + cleanup)" 15
+    ax_ok wait-text "$APP_NAME" "$FOUR_WINDOW" "one-time 4.4 GB download" 15
   obs_shot "2-speech-local-light"
   # OpenRouter is the default choice now: pick the model first.
   expect "choose this Mac" ax_ok radio-press "$APP_NAME" "$FOUR_WINDOW" "Use this Mac"

@@ -43,6 +43,12 @@ export const commands = {
 	 */
 	savedKeyHint: () => typedError<string | null, string>(__TAURI_INVOKE("saved_key_hint")),
 	/**
+	 *  Asks `OpenRouter` how much credit is left (within two seconds). `None`
+	 *  if no key is saved or nothing could be read: the window then shows no
+	 *  amount. Never logs the key or the reply.
+	 */
+	openrouterCredits: () => typedError<CreditView_Serialize | null, string>(__TAURI_INVOKE("openrouter_credits")),
+	/**
 	 *  The view the settings window shows and, for onboarding (M5.2), the step
 	 *  the user is on and the two permissions. Never blocks: the key isn't read.
 	 */
@@ -344,6 +350,34 @@ export type ConnectionResult_Serialize = {
 	code: ErrorCode | null,
 	/**  One plain sentence. */
 	message: string,
+};
+
+/**
+ *  The credit the saved key can spend, for the "Add credits" line (TOS1).
+ *  Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+ */
+export type CreditView = CreditView_Serialize | CreditView_Deserialize;
+
+/**
+ *  The credit the saved key can spend, for the "Add credits" line (TOS1).
+ *  Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+ */
+export type CreditView_Deserialize = {
+	/**  Credit left on the account. */
+	balance?: number | null,
+	/**  What is left of the key's own spending limit, if it has one. */
+	key_limit_left?: number | null,
+};
+
+/**
+ *  The credit the saved key can spend, for the "Add credits" line (TOS1).
+ *  Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+ */
+export type CreditView_Serialize = {
+	/**  Credit left on the account. */
+	balance: number | null,
+	/**  What is left of the key's own spending limit, if it has one. */
+	key_limit_left: number | null,
 };
 
 /**  Where the engine in use is. */

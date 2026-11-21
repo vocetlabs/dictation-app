@@ -557,14 +557,70 @@ pub async fn get_onboarding(
     diagnostics: State<'_, Diagnostics>,
     usage: State<'_, Usage>,
 ) -> Result<OnboardingStatus, String> {
+    Ok(read_onboarding(
+        &shell,
+        &onboarding,
+        &permissions,
+        &diagnostics,
+        &usage,
+    ))
+}
+
+/// Reads setup's status. The person allowed a permission in System Settings,
+/// which is in front: bring setup back over it. Shared by the window's poll
+/// ([`get_onboarding`]) and [`watch_grants`], because a window behind
+/// another app stops polling: macOS tells its page it is hidden.
+pub(crate) fn read_onboarding(
+    shell: &AppShell,
+    onboarding: &Arc<Onboarding>,
+    permissions: &OsPermissions,
+    diagnostics: &Diagnostics,
+    usage: &Usage,
+) -> OnboardingStatus {
     let status = onboarding.status(&*permissions.0, diagnostics.hotkey_is_down());
-    usage::setup_status_read(&usage, &onboarding, &status);
-    // The person allowed a permission in System Settings, which is in front:
-    // bring setup back over it.
+    usage::setup_status_read(usage, onboarding, &status);
     if onboarding.take_grant() {
         shell.0.show_onboarding_window();
     }
-    Ok(status)
+    status
+}
+
+/// While setup is on the window, watches the two permissions from Rust, once
+/// a second, so a grant in System Settings brings setup to the front even
+/// when its page isn't running (a window behind another app is hidden to its
+/// page, and the page's own poll stops).
+pub fn watch_grants(app: &tauri::AppHandle) {
+    use tauri::Manager as _;
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("grant-watch".into())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let (
+                    Some(shell),
+                    Some(onboarding),
+                    Some(permissions),
+                    Some(diagnostics),
+                    Some(usage),
+                ) = (
+                    app.try_state::<AppShell>(),
+                    app.try_state::<Arc<Onboarding>>(),
+                    app.try_state::<OsPermissions>(),
+                    app.try_state::<Diagnostics>(),
+                    app.try_state::<Usage>(),
+                )
+                else {
+                    continue;
+                };
+                if onboarding.view() == onboarding::View::Onboarding {
+                    read_onboarding(&shell, &onboarding, &permissions, &diagnostics, &usage);
+                }
+            }
+        });
+    if let Err(error) = spawned {
+        tracing::error!(%error, "could not start watching the permissions");
+    }
 }
 
 /// Get started on Welcome: the person agrees to the Terms and Privacy Policy.
@@ -749,6 +805,7 @@ pub fn builder<R: tauri::Runtime>() -> tauri_specta::Builder<R> {
             crate::connect::connect_openrouter,
             crate::connect::cancel_connect,
             crate::connect::saved_key_hint,
+            crate::connect::openrouter_credits,
             get_onboarding,
             accept_terms,
             request_permission,
@@ -2656,10 +2713,12 @@ mod capability_tests {
                 }
                 // No arguments to refuse: the disabled keychain refuses
                 // instead, after the ACL let the call through.
-                "saved_key_hint" | "delete_api_key" => match invoke(main, command, args(command)) {
-                    Err(error) if error.to_string().contains("keychain is disabled") => Ok(()),
-                    other => other.map(|_| ()),
-                },
+                "saved_key_hint" | "openrouter_credits" | "delete_api_key" => {
+                    match invoke(main, command, args(command)) {
+                        Err(error) if error.to_string().contains("keychain is disabled") => Ok(()),
+                        other => other.map(|_| ()),
+                    }
+                }
                 // F1: it must succeed, through the fake opener.
                 "open_issue" => invoke(main, command, args(command)).map(|_| ()),
                 "run_checks"

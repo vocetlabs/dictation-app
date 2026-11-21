@@ -59,6 +59,11 @@ class Backend {
   /** What `test_api_key` answers: `null` for success, or an error to throw. */
   testResult: string | null = null;
   /** Fails the command named, with the message (a string, as the app sends). */
+  /** What `openrouter_credits` answers when connected. */
+  credit: { balance: number | null; key_limit_left: number | null } | null = {
+    balance: 4.82,
+    key_limit_left: null,
+  };
   failing = new Map<string, string>();
   /** Holds the command named until the promise settles. */
   holds = new Map<string, Promise<void>>();
@@ -121,6 +126,8 @@ class Backend {
         return null;
       case "saved_key_hint":
         return this.keys.openrouter ? "sk-or-…cdef" : null;
+      case "openrouter_credits":
+        return this.keys.openrouter ? this.credit : null;
       case "connect_openrouter":
         this.keys.openrouter = true;
         return null;
@@ -568,6 +575,14 @@ describe("u12_criterion_3 Speech is one pick-one list", () => {
     expect(radio(/^On this Mac$/).disabled).toBe(true);
   });
 
+  it("TOS1 round 3: the Download button shows the whole download in gigabytes, like setup", async () => {
+    backend.models = [model(ENGLISH, { state: "missing", size_bytes: 1_319_830_656 })];
+    backend.cleanup = [model("gemma", { state: "missing", size_bytes: 3_106_738_272 })];
+    await open("speech");
+    expect(await screen.findByRole("button", { name: "Download · 4.4 GB" })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/4427 MB|4426 MB/);
+  });
+
   it("Q4: On this Mac is one download: one row, one progress bar, one Pause", async () => {
     backend.models = [ready(ENGLISH)];
     backend.cleanup = [
@@ -842,16 +857,69 @@ describe("u12_criterion_4 the OpenRouter sheet (Q3)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("a connected account shows the masked key, Disconnect, Add credits, and no full key", async () => {
+  it("a connected account shows the tick, the credit, Add credits and Disconnect; Key ending is the only trace of the key", async () => {
     backend.keys.openrouter = true;
     await open("speech");
     expect(await screen.findByRole("button", { name: "Manage…" })).toBeTruthy();
     click("Manage…");
-    expect(await screen.findByText("Connected: sk-or-…cdef")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText(CONNECTED)).toBeTruthy();
+    expect(await within(dialog).findByText("$4.82 left")).toBeTruthy();
+    expect(within(dialog).getByText("Key ending cdef")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Disconnect" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Add credits" })).toBeTruthy();
+    // Done, and nothing to connect again or paste while connected.
+    expect(within(dialog).getByRole("button", { name: "Done" })).toBeTruthy();
+    for (const gone of ["Connect again", "Connect OpenRouter", "Paste a key instead"]) {
+      expect(within(dialog).queryByRole("button", { name: gone })).toBeNull();
+    }
     expect(document.body.textContent).not.toContain(KEY);
+    expect(document.body.textContent).not.toContain("sk-or-");
     expect(backend.named("saved_key_hint")).toHaveLength(1);
+  });
+
+  it("the credit is asked again when the window gets focus back, and a refusal shows nothing", async () => {
+    backend.keys.openrouter = true;
+    backend.credit = null;
+    await open("speech");
+    click("Manage…");
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText(CONNECTED);
+    await waitFor(() => {
+      expect(backend.named("openrouter_credits")).toHaveLength(1);
+    });
+    expect(dialog.querySelector("#connect-credit")).toBeNull();
+    backend.credit = { balance: 2, key_limit_left: 1.5 };
+    fireEvent.focus(window);
+    expect(await within(dialog).findByText("$2.00 left · Spending limit: $1.50 left")).toBeTruthy();
+  });
+
+  it("not connected: the explainer and one Connect button; no Add credits, no paste link, no price", async () => {
+    backend.keys.openrouter = false;
+    await open("speech");
+    const dialog = await screen.findByRole("dialog", { name: "OpenRouter" });
+    expect(
+      within(dialog).getByText(
+        "Vocet uses your OpenRouter account. You pay OpenRouter directly for what you use; new accounts need a few dollars of credit.",
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Connect OpenRouter" })).toBeTruthy();
+    for (const gone of ["Add credits", "Paste a key instead", "Disconnect", "Connect again"]) {
+      expect(within(dialog).queryByRole("button", { name: gone })).toBeNull();
+    }
+    expect(dialog.textContent).not.toMatch(/\$|1,000/);
+    expect(backend.named("openrouter_credits")).toEqual([]);
+  });
+
+  it("Having trouble? Paste a key instead appears after a failed sign-in", async () => {
+    backend.keys.openrouter = false;
+    backend.failing.set("connect_openrouter", "Connecting took too long. Try again.");
+    await open("speech");
+    const dialog = await screen.findByRole("dialog", { name: "OpenRouter" });
+    click("Connect OpenRouter");
+    await within(dialog).findByText("Connecting took too long. Try again.");
+    expect(within(dialog).getByText("Having trouble?")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Paste a key instead" })).toBeTruthy();
   });
 
   it("Add credits opens OpenRouter's credits page through the app", async () => {
@@ -882,7 +950,8 @@ describe("u12_criterion_4 the OpenRouter sheet (Q3)", () => {
     click("Manage…");
     click("Disconnect");
     await screen.findByText("the Keychain didn't answer");
-    expect(await screen.findByText("Connected: sk-or-…cdef")).toBeTruthy();
+    expect(await screen.findByText("Key ending cdef")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
   });
 
   it("Esc closes the sheet and the keyboard stays inside it", async () => {
@@ -900,9 +969,14 @@ describe("u12_criterion_4 the OpenRouter sheet (Q3)", () => {
   describe("Paste a key instead", () => {
     async function openPaste() {
       onDevice();
+      // The link comes only once the browser sign-in has failed.
+      backend.failing.set("connect_openrouter", "Connecting took too long. Try again.");
       await open("speech");
       click("Connect…");
       await screen.findByRole("dialog");
+      click("Connect OpenRouter");
+      await screen.findByText("Connecting took too long. Try again.");
+      backend.failing.delete("connect_openrouter");
       click("Paste a key instead");
     }
 
@@ -916,7 +990,8 @@ describe("u12_criterion_4 the OpenRouter sheet (Q3)", () => {
       expect(backend.named("test_api_key")[0]?.args).toEqual({ key: KEY });
       expect(backend.named("set_api_key")[0]?.args).toEqual({ key: KEY });
       expect(document.body.textContent).not.toContain(KEY);
-      expect(screen.getByLabelText<HTMLInputElement>(/API key/).value).toBe("");
+      // Connected: the field is gone with the paste link.
+      expect(screen.queryByLabelText(/API key/)).toBeNull();
     });
 
     it("a key the provider rejects is not saved", async () => {

@@ -11,7 +11,9 @@
 #  2. A dictation works with that key (the fake saw auth=good) and pastes.
 #  3. A 402 from the fake shows "Your OpenRouter credits ran out." in the tray
 #     with "Add credits…" as the fix.
-#  4. Settings, Speech, Manage…, Disconnect removes the key (the engine has none).
+#  4. Settings, Speech, Manage… shows the tick, the credit balance (the fake's
+#     credits endpoint), Add credits and the key's last four characters;
+#     Disconnect removes the key (the engine has none).
 #  5. Neither the log nor any file holds the key.
 
 CONNECT_KEY=q3connectkey4e9d7a1c
@@ -31,6 +33,14 @@ connect_key_file() {
 # The latest "engine settings" line says no key.
 connect_engine_has_no_key() {
   app_log | grep 'engine settings provider=openrouter' | tail -1 | grep -q 'has_key=false'
+}
+
+# Setup shows nothing of the key: not its prefix, not its last four characters.
+connect_window_lacks_key_hint() {
+  if ax dump "$APP_NAME" 2>/dev/null | grep -aqE "sk-or|Key ending|${CONNECT_KEY: -4}"; then
+    log "  the setup window shows part of the key"
+    return 1
+  fi
 }
 
 e2e_connect_openrouter() {
@@ -68,6 +78,11 @@ e2e_connect_openrouter() {
     connect_provider_saw '^exchange pkce=ok code=ok'
   expect "the sign-in came back to the app's listener (200)" \
     connect_provider_saw '^auth-callback status=200'
+  expect "the connected screen shows the credit balance, 10 minus 5.18" \
+    ax_ok wait-text "$APP_NAME" "$CONNECT_WINDOW" "\$4.82 left" 15
+  expect "the fake was asked for the credit with the good key" \
+    connect_provider_saw '^credits auth=good'
+  expect "the setup screen shows no part of the key" connect_window_lacks_key_hint
   expect "the key was saved and the engine rebuilt from it" \
     wait_for_log_count 'engine rebuilt' $((rebuilt + 1)) 15
   expect "the engine has the key" wait_for_log 'engine settings provider=openrouter .*has_key=true' 15
@@ -109,6 +124,10 @@ e2e_connect_openrouter() {
   expect "Manage… opens the sheet" ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" "Manage…"
   expect "the sheet has Add credits" \
     ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Add credits" 10
+  expect "the sheet shows the credit balance" \
+    ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "\$4.82 left" 15
+  expect "the sheet shows the last four characters of the key, and no more" \
+    ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Key ending ${CONNECT_KEY: -4}" 10
   rebuilt=$(log_count 'engine rebuilt')
   expect "press Disconnect" ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" Disconnect
   expect "the sheet says the key is removed" \

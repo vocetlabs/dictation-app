@@ -11,6 +11,11 @@ export function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
 }
 
+/** A download's size for a button: gigabytes from 1 GB up ("4.4 GB"), else megabytes. */
+export function downloadSize(bytes: number): string {
+  return bytes >= 1_000_000_000 ? gigabytes(bytes) : megabytes(bytes);
+}
+
 /** Without the unit, for "212 of 477 MB". */
 function mb(bytes: number): string {
   return String(Math.round(bytes / 1_000_000));
@@ -161,18 +166,16 @@ export function downloadingText(model: LocalModelInfo_Serialize): string {
 }
 
 /**
- * Setup's on-device card: the language and the whole download, speech plus
- * cleanup, summed from the catalogue ("English · 4.4 GB download (speech +
- * cleanup)"). Until the cleanup model is listed there is no true size, so the
- * card says only the language.
+ * The whole on-device download, speech plus cleanup, summed from the
+ * catalogue ("4.4 GB"). `null` until the cleanup model is listed: there is
+ * no true size before that.
  */
-export function wholeDownloadLabel(
+export function wholeDownloadSize(
   speech: LocalModelInfo_Serialize,
   cleanup: LocalModelInfo_Serialize | null,
-): string {
-  if (cleanup === null) return MODEL_TITLE;
-  const bytes = (speech.size_bytes ?? 0) + (cleanup.size_bytes ?? 0);
-  return `${MODEL_TITLE} · ${gigabytes(bytes)} download (speech + cleanup)`;
+): string | null {
+  if (cleanup === null) return null;
+  return gigabytes((speech.size_bytes ?? 0) + (cleanup.size_bytes ?? 0));
 }
 
 /** The cloud provider's name (Q2: `OpenRouter` only). */

@@ -44,7 +44,7 @@ e2e_onboarding_first_run() {
   expect "Speech asks for the engine" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "How should Vocet transcribe" 10
   expect "the local model shows the whole download" \
-    ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "English · 4.4 GB download (speech + cleanup)" 10
+    ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "one-time 4.4 GB download" 10
   expect "OpenRouter is explained for people who don't know it" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "OpenRouter is one account for many AI models" 5
   obs_shot "2-speech-$SHOT_LOOK"
@@ -55,13 +55,19 @@ e2e_onboarding_first_run() {
   expect "press Continue" ax_ok press "$APP_NAME" "$ONBOARDING_WINDOW" Continue
   expect "the next screen is Connect OpenRouter" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "Connect OpenRouter" 10
-  expect "Connect OpenRouter is the primary action" \
-    ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "Paste a key instead" 10
+  expect "Continue waits for the connection; no paste link up front" \
+    ax_ok wait-no-text "$APP_NAME" "$ONBOARDING_WINDOW" "Paste a key instead" 3
   expect "Continue waits for a connection, and says so" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "Continue unlocks once OpenRouter" 10
   expect "nothing to disconnect, re-add or credit before connecting" \
     ax_ok wait-no-text "$APP_NAME" "$ONBOARDING_WINDOW" "Add credits" 2
   obs_shot "3-connect-not-connected-$SHOT_LOOK"
+  # The fake has no key to hand out here (no connect-key file), so the
+  # browser sign-in fails: only then is the paste fallback offered.
+  expect "press Connect OpenRouter" \
+    ax_ok press-first "$APP_NAME" "$ONBOARDING_WINDOW" "Connect OpenRouter"
+  expect "after the failed sign-in, Having trouble? Paste a key instead appears" \
+    ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "Having trouble?" 30
   expect "open Paste a key instead" \
     ax_ok press "$APP_NAME" "$ONBOARDING_WINDOW" "Paste a key instead"
 
@@ -91,8 +97,10 @@ e2e_onboarding_first_run() {
   expect "the key was saved and the engine rebuilt from it" \
     wait_for_log_count 'engine rebuilt' $((rebuilt + 1)) 10
   expect "with the key" wait_for_log 'engine settings provider=openrouter .*has_key=true'
-  expect "Add credits is the one link once connected" \
+  expect "Add credits is a button beside the balance once connected" \
     ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "Add credits" 5
+  expect "the credit balance shows (the fake's 10 minus 5.18)" \
+    ax_ok wait-text "$APP_NAME" "$ONBOARDING_WINDOW" "\$4.82 left" 15
   expect "and Paste a key instead is gone" \
     ax_ok wait-no-text "$APP_NAME" "$ONBOARDING_WINDOW" "Paste a key instead" 5
   obs_shot "3-connect-connected-$SHOT_LOOK"

@@ -2,20 +2,47 @@ import { useEffect, useRef, useState } from "react";
 import { commands } from "../bindings";
 import type { LocalModelInfo_Serialize, Settings_Serialize } from "../bindings";
 import { BROKEN, messageOf } from "../messages";
-import { PROVIDER_NAME, wholeDownloadLabel } from "../settings/modelRow";
-import { ConnectNotices, PasteKey, useConnection } from "../settings/connection";
+import { PROVIDER_NAME, wholeDownloadSize } from "../settings/modelRow";
+import {
+  ConnectNotices,
+  PasteKey,
+  creditLines,
+  useConnection,
+  useCredit,
+} from "../settings/connection";
 import type { Connection } from "../settings/connection";
 import { recommendedModel } from "./logic";
 import { StepFrame } from "./StepFrame";
 import type { FrameParts } from "./StepFrame";
 
-export const MODEL_COPY = "Runs on this Mac. Works offline after a one-time download.";
 export const KEY_REASON = "Continue unlocks once OpenRouter is connected";
 /** For people who have never heard of OpenRouter (no price per hour: OpenRouter prices by the token). */
 export const OPENROUTER_EXPLAINER =
   "OpenRouter is one account for many AI models. You add a few dollars of credit and pay only for what you use.";
-export const KEY_CARD_COPY = `${OPENROUTER_EXPLAINER} Needs internet. Your speech goes through your own OpenRouter account.`;
 export const KEY_SAVED = "✓ Connected to OpenRouter";
+
+/**
+ * The two cards' pros and cons, as the website's "Two ways to run" says them:
+ * a summary line, then short points. Nothing here is a number that hasn't
+ * been checked: no price, no speed, no memory.
+ */
+export const KEY_SUMMARY = "Cloud models, through an account of your own.";
+export const KEY_POINTS: readonly string[] = [
+  "Most accurate",
+  "Needs internet",
+  "Pay as you go: a few dollars of credit on your own OpenRouter account",
+  "OpenRouter is one account for many AI models.",
+];
+export const MODEL_SUMMARY = "English models that run on your Mac.";
+/** The points of "On this Mac"; `size` is the whole download ("4.4 GB"), once known. */
+export function modelPoints(size: string | null): readonly string[] {
+  return [
+    "Free, no account",
+    `Works offline after a one-time ${size === null ? "" : `${size} `}download`,
+    "Your audio and text never leave your Mac",
+    "Good accuracy, a bit below OpenRouter",
+  ];
+}
 
 /** The step's title. */
 export const SPEECH_TITLE = "How should Vocet transcribe?";
@@ -272,8 +299,11 @@ function SpeechForm({
           }}
         />
         <span className="ob-option-text">
-          <span className="ob-card-title">Use OpenRouter</span>
-          <span className="ob-caption">{KEY_CARD_COPY}</span>
+          <span className="ob-card-title">
+            Use OpenRouter <span className="ob-tag">Recommended</span>
+          </span>
+          <span className="ob-caption">{KEY_SUMMARY}</span>
+          <Points points={KEY_POINTS} />
         </span>
       </label>
 
@@ -289,19 +319,19 @@ function SpeechForm({
           }}
         />
         <span className="ob-option-text">
-          <span className="ob-eyebrow">On this Mac</span>
-          {model === null ? (
-            modelsError === null ? (
-              <span className="ob-card-title">Loading the models…</span>
-            ) : (
-              <span role="alert" className="error">
-                Couldn&apos;t list the models: {modelsError}
-              </span>
-            )
+          <span className="ob-card-title">On this Mac</span>
+          {model === null && modelsError !== null ? (
+            <span role="alert" className="error">
+              Couldn&apos;t list the models: {modelsError}
+            </span>
           ) : (
             <>
-              <span className="ob-card-title">{wholeDownloadLabel(model, cleanup)}</span>
-              <span className="ob-caption">{MODEL_COPY}</span>
+              <span className="ob-caption">
+                {model === null ? "Loading the models…" : MODEL_SUMMARY}
+              </span>
+              <Points
+                points={modelPoints(model === null ? null : wholeDownloadSize(model, cleanup))}
+              />
             </>
           )}
         </span>
@@ -316,11 +346,22 @@ function SpeechForm({
   );
 }
 
+/** A card's short points. */
+function Points({ points }: { points: readonly string[] }) {
+  return (
+    <ul className="ob-points">
+      {points.map((point) => (
+        <li key={point}>{point}</li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * Connect OpenRouter: its own screen under Speech, so the rail doesn't move
  * (U11). Calm (TOS1): not connected, one sentence, one button and a small
- * "Paste a key instead"; connected, a tick, the key's hint, "Add credits" and
- * Continue. Disconnecting and pasting over a saved key stay in Settings.
+ * "Paste a key instead"; connected, a tick, the credit left with "Add credits"
+ * beside it, and Continue. Disconnecting and pasting over a saved key stay in Settings.
  * Continue unlocks once a key is saved, and a failure stays here. Back is the
  * way to "this Mac only".
  */
@@ -341,6 +382,8 @@ function KeyScreen({
 }) {
   const { status, busy } = connection;
   const connected = status.state === "connected";
+  // The balance comes when it comes; nothing waits for it.
+  const lines = creditLines(useCredit(connected));
   const blockedBecause = working
     ? "One moment…"
     : status.state === "checking"
@@ -360,12 +403,18 @@ function KeyScreen({
             <p role="status" className="ob-key-saved-title">
               {KEY_SAVED}
             </p>
-            <p className="ob-small" id="connect-status">
-              {status.hint}
-            </p>
-            <button type="button" className="link" onClick={connection.addCredits}>
-              Add credits
-            </button>
+            <div className="ob-credit">
+              {lines.length > 0 && (
+                <span className="ob-credit-lines" id="connect-credit">
+                  {lines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </span>
+              )}
+              <button type="button" onClick={connection.addCredits}>
+                Add credits
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -397,7 +446,7 @@ function KeyScreen({
             <PasteKey connection={connection} />
           </>
         )}
-        <ConnectNotices connection={connection} errorsOnly />
+        <ConnectNotices connection={connection} />
       </div>
       {problem !== null && (
         <p role="alert" className="notice error">

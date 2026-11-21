@@ -10,6 +10,7 @@
     "allow-connect-openrouter",
     "allow-cancel-connect",
     "allow-saved-key-hint",
+    "allow-openrouter-credits",
     "allow-get-onboarding",
     "allow-accept-terms",
     "allow-request-permission",

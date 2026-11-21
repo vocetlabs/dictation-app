@@ -529,6 +529,7 @@ fn setup(app: &mut App, mut instance: Instance) -> anyhow::Result<()> {
     ));
     // The menu reads the settings, engine and permissions from here on.
     tray_menu::start(app.handle());
+    commands::watch_grants(app.handle());
     tracing::info!(hotkey = %hotkey_control.spec(), "ready");
     onboarding_at_launch(
         app.handle(),

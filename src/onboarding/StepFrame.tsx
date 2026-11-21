@@ -39,20 +39,10 @@ interface Props {
   large?: boolean;
   primary: Primary;
   secondary?: Secondary;
-  /** A line under the footer, below the primary (Welcome's Terms line). */
-  below?: ReactNode;
   children: ReactNode;
 }
 
-export function StepFrame({
-  parts,
-  title,
-  large = false,
-  primary,
-  secondary,
-  below,
-  children,
-}: Props) {
+export function StepFrame({ parts, title, large = false, primary, secondary, children }: Props) {
   const content = useRef<HTMLDivElement>(null);
   // A new step starts at its top.
   useEffect(() => {
@@ -103,7 +93,6 @@ export function StepFrame({
           {primary.label}
         </button>
       </footer>
-      {below !== undefined && <div className="ob-below">{below}</div>}
     </div>
   );
 }
