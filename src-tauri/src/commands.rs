@@ -76,6 +76,9 @@ pub trait Shell: Send + Sync {
     fn restart(&self);
     /// Shows the window on its first-run steps.
     fn show_onboarding_window(&self);
+    /// Brings setup forward after a grant, only if it is still shown by the
+    /// time the window thread runs this (a close in between wins).
+    fn bring_setup_forward(&self) {}
     /// Shows the window on the settings form.
     fn show_settings_window(&self);
 }
@@ -581,7 +584,7 @@ pub(crate) fn read_onboarding(
     usage::setup_status_read(usage, onboarding, &status);
     if onboarding.take_grant() {
         tracing::info!("a permission was granted: bringing setup to the front");
-        shell.0.show_onboarding_window();
+        shell.0.bring_setup_forward();
     }
     status
 }

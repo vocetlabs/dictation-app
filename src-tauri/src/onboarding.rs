@@ -360,9 +360,14 @@ impl Onboarding {
     pub fn set_window_open(&self, open: bool) {
         let mut state = self.lock();
         state.window_open = open;
-        if !open {
-            state.granted_now = false;
-        }
+        // Closing drops a pending grant and opening starts clean.
+        state.granted_now = false;
+    }
+
+    /// Whether the window is shown.
+    #[must_use]
+    pub fn window_open(&self) -> bool {
+        self.lock().window_open
     }
 
     /// The user asked for Accessibility.
@@ -398,7 +403,10 @@ impl Onboarding {
         let granted = (readiness.microphone, readiness.accessibility);
         // A flip from missing to granted since the last read; the first read
         // only sets the baseline.
-        if let Some((was_microphone, was_accessibility)) = state.seen_granted
+        // Recorded only while the window is shown: a grant while it is closed
+        // is nobody's to act on, and must not survive a reopen.
+        if state.window_open
+            && let Some((was_microphone, was_accessibility)) = state.seen_granted
             && ((granted.0 && !was_microphone) || (granted.1 && !was_accessibility))
         {
             state.granted_now = true;
@@ -749,6 +757,38 @@ mod tests {
         onboarding.status(&permissions, false);
         onboarding.set_window_open(false);
         assert!(!onboarding.take_grant());
+    }
+
+    /// TOS1 round 5: a grant read while the window is closed is never
+    /// recorded, so it can't survive a reopen; a grant then a close is dropped.
+    #[test]
+    fn tos1_grants_are_recorded_only_while_the_window_is_shown() {
+        let onboarding = Onboarding::new();
+        onboarding.open(Readiness::default());
+        let permissions = granted(false, false);
+        // Close, then grant: read while closed, not recorded.
+        onboarding.status(&permissions, false);
+        permissions.set(Permission::Microphone, Granted);
+        onboarding.status(&permissions, false);
+        onboarding.set_window_open(true);
+        assert!(
+            !onboarding.take_grant(),
+            "a grant while closed is gone on reopen"
+        );
+        // Grant, then close: dropped.
+        permissions.set(Permission::Accessibility, Granted);
+        onboarding.status(&permissions, false);
+        onboarding.set_window_open(false);
+        assert!(!onboarding.window_open());
+        assert!(!onboarding.take_grant());
+        // A stale grant already pending when the window is reopened is cleared.
+        onboarding.set_window_open(true);
+        permissions.set(Permission::Microphone, Denied);
+        onboarding.status(&permissions, false);
+        permissions.set(Permission::Microphone, Granted);
+        onboarding.status(&permissions, false);
+        onboarding.set_window_open(true);
+        assert!(!onboarding.take_grant(), "reopen clears a stale grant");
     }
 
     /// TOS1: a permission turning granted while setup is open brings the

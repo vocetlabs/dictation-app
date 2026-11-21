@@ -576,6 +576,10 @@ impl commands::Shell for TauriShell {
         window::show(&self.0, onboarding::View::Onboarding);
     }
 
+    fn bring_setup_forward(&self) {
+        window::bring_setup_forward(&self.0);
+    }
+
     fn show_settings_window(&self) {
         window::show(&self.0, onboarding::View::Settings);
     }
