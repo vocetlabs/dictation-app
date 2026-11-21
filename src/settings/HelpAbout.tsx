@@ -134,7 +134,7 @@ export function About() {
       >
         <LinkButton link="licence">Read the licence</LinkButton>
       </Row>
-      <Row label="Source code" caption="github.com/gargankit90/dictation-app">
+      <Row label="Source code" caption="github.com/vocetlabs/dictation-app">
         <LinkButton link="repository">Open on GitHub</LinkButton>
       </Row>
       <Row label="Credits" caption="Code adapted from other open-source projects, with thanks.">

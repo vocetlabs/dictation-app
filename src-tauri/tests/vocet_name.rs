@@ -17,12 +17,12 @@ const OLD_NAME: &str = "dictation-app";
 
 /// Lines that may name the old crate/identifier: nobody reads them.
 const INTERNAL: [&str; 6] = [
-    "github.com/gargankit90/dictation-app", // URLs
-    "dictation-app overlay",                // the overlay's hidden window title
-    "dictation-app.log",                    // the log file prefix
-    "-p dictation-app",                     // cargo commands
-    "a thread panicked before logging",     // stderr before logging starts
-    "signingIdentity",                      // the certificate keeps its name
+    "github.com/vocetlabs/dictation-app", // URLs
+    "dictation-app overlay",              // the overlay's hidden window title
+    "dictation-app.log",                  // the log file prefix
+    "-p dictation-app",                   // cargo commands
+    "a thread panicked before logging",   // stderr before logging starts
+    "signingIdentity",                    // the certificate keeps its name
 ];
 
 fn root() -> PathBuf {

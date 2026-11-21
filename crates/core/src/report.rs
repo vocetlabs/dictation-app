@@ -26,7 +26,7 @@ pub const MAX_ERRORS: usize = 10;
 const MAX_FIELD_CHARS: usize = 40;
 
 /// Where the issue form opens.
-pub const ISSUES_URL: &str = "https://github.com/gargankit90/dictation-app/issues/new";
+pub const ISSUES_URL: &str = "https://github.com/vocetlabs/dictation-app/issues/new";
 
 /// Which engine transcribes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -325,7 +325,7 @@ mod tests {
     fn the_issue_url_carries_the_report_as_its_body() {
         let report = render(&input(&[]));
         let url = issue_url(&report);
-        assert!(url.starts_with("https://github.com/gargankit90/dictation-app/issues/new?title="));
+        assert!(url.starts_with("https://github.com/vocetlabs/dictation-app/issues/new?title="));
         let body = url.split("&body=").nth(1).unwrap();
         assert!(!body.contains(' ') && !body.contains('\n'));
         assert!(body.contains("app_version%3A%200.1.0"), "{body}");

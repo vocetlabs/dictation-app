@@ -22,7 +22,7 @@ text:
 
 1. Download the DMG (`Vocet_<version>_aarch64.dmg`) from the newest
    release at
-   <https://github.com/gargankit90/dictation-app/releases/latest>,
+   <https://github.com/vocetlabs/dictation-app/releases/latest>,
    or use the one you were sent, and open it.
 2. Drag **Vocet** onto the **Applications** shortcut in the window.
 3. Eject the DMG (Finder sidebar, or drag it to the Trash).
@@ -192,7 +192,7 @@ are not written at all.
 
 ## Report a bug
 
-Open an issue: <https://github.com/gargankit90/dictation-app/issues/new/choose>
+Open an issue: <https://github.com/vocetlabs/dictation-app/issues/new/choose>
 and pick **Bug report**. The form asks for:
 
 - your macOS version (Apple menu > **About This Mac**) and Mac model,
@@ -235,16 +235,16 @@ The same list is in the [changelog](../CHANGELOG.md).
 - Apple Silicon Macs only, macOS 13 or newer. Windows comes later.
 - **Don't press other keys while you hold the dictation key.** If you do, the
   recording is dropped without a message
-  ([#315](https://github.com/gargankit90/dictation-app/issues/315); fixed
+  ([#315](https://github.com/vocetlabs/dictation-app/issues/315); fixed
   after 0.1.0).
 - A long dictation on an on-device model can take a while, and has no time
-  limit yet ([#316](https://github.com/gargankit90/dictation-app/issues/316)).
+  limit yet ([#316](https://github.com/vocetlabs/dictation-app/issues/316)).
 - Recordings stop after 5 minutes.
 - Fully offline use of **On this Mac** is not yet checked on a Mac with no
   network.
 - A crash inside the on-device engine is not reported (it could contain what
   you said): if the app quits on its own, tell us in a bug report
-  ([#226](https://github.com/gargankit90/dictation-app/issues/226)).
+  ([#226](https://github.com/vocetlabs/dictation-app/issues/226)).
 - With **OpenRouter**, speech goes through OpenRouter to OpenAI, and the
   text to a cleanup model. Don't dictate anything you would not send to a cloud service.
 - Usage and error events are on by default; turn them off in

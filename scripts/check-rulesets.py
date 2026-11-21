@@ -45,7 +45,7 @@ def compare(expected, actual, require_bypass=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", default="gargankit90/dictation-app")
+    parser.add_argument("--repo", default="vocetlabs/dictation-app")
     parser.add_argument("--require-bypass", action="store_true")
     args = parser.parse_args()
     def api(path):

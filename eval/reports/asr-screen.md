@@ -40,7 +40,7 @@ WER pools word edits across the corpus after Whisper English normalization. The 
 | AssemblyAI, first VM run | 86.8% | 85.4% | 0.26% |
 | AssemblyAI Smart, second VM run | 88.1% | 86.8% | 0.26% |
 
-The hosted comparison uses the separate experiment's results. Nemotron's Codex advantage over Groq was 7.9 points overall and 1.3 on check. Gemma E2B one-pass lost 37 sendable drafts and gained 13 against Parakeet + E2B text cleanup by Claude's judgment. [Voice Arena VM results](voicearena.md) · [Local cleanup](https://github.com/gargankit90/dictation-app/blob/eval/local-cleanup/eval/local-cleanup/REPORT.md) · [Gemma one-pass](https://github.com/gargankit90/dictation-app/blob/eval/gemma-onepass/eval/gemma-onepass/REPORT.md) · [Hosted screen](https://github.com/gargankit90/dictation-app/blob/eval/hosted-asr/eval/hosted-asr/REPORT.md)
+The hosted comparison uses the separate experiment's results. Nemotron's Codex advantage over Groq was 7.9 points overall and 1.3 on check. Gemma E2B one-pass lost 37 sendable drafts and gained 13 against Parakeet + E2B text cleanup by Claude's judgment. [Voice Arena VM results](voicearena.md) · [Local cleanup](https://github.com/vocetlabs/dictation-app/blob/eval/local-cleanup/eval/local-cleanup/REPORT.md) · [Gemma one-pass](https://github.com/vocetlabs/dictation-app/blob/eval/gemma-onepass/eval/gemma-onepass/REPORT.md) · [Hosted screen](https://github.com/vocetlabs/dictation-app/blob/eval/hosted-asr/eval/hosted-asr/REPORT.md)
 
 ## Paired changes in sendability
 
