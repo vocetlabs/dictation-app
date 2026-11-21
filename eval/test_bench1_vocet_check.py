@@ -1,5 +1,7 @@
-"""Tests for eval/bench1_vocet_check.py: the shortcut driver sends --press / --release to the running app and
-runs in the bench's own loop. No macOS or app needed."""
+"""Tests for eval/bench1_vocet_check.py: the shortcut driver's calls, and the paired comparison (full
+coverage required, the margin fixed in the file). No macOS or app needed."""
+import csv
+import json
 import pathlib
 import sys
 import tempfile
@@ -10,42 +12,57 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import bench1_vocet_check as vc  # noqa: E402
 
+MAN = [{"clip_id": f"c{i}", "spoken_text": f"word{i} one two three", "intended_text": f"Word{i} one two three."}
+       for i in range(10)]
 
-class ShortcutDriverTests(unittest.TestCase):
+
+class DriverTests(unittest.TestCase):
     def test_press_and_release_go_to_the_running_app_with_open(self):
-        drv = vc.VocetShortcutDriver("~/Applications/Vocet.app", pathlib.Path("/tmp/x.wav"), vc.hb.Timing(), hold=0)
+        drv = vc.VocetShortcutDriver("/Applications/Vocet.app", pathlib.Path("/tmp/x.wav"), vc.hn.Timing())
         with mock.patch.object(vc.subprocess, "run") as run:
-            drv.start()
-            drv.feed(None)
-            drv.stop()
-        flags = [c.args[0][-1] for c in run.call_args_list]
-        self.assertEqual(flags, ["--press", "--release"])
-        for c in run.call_args_list:
-            self.assertEqual(c.args[0][:3], ["open", "-g", "-n"])
-            self.assertTrue(c.args[0][3].endswith("/Applications/Vocet.app"))
-            self.assertNotIn("~", c.args[0][3])
+            drv.press()
+            drv.release()
+        self.assertEqual([c.args[0] for c in run.call_args_list],
+                         [["open", "-g", "-n", "/Applications/Vocet.app", "--args", f] for f in ("--press", "--release")])
 
-    def test_it_runs_in_the_bench_loop(self):
-        # The driver is a harness Driver, so run_all drives it like any other (stub target, fake clock).
-        clock = vc.hb.FakeClock()
-        app = vc.hb.StubApp(clock, warm=True)
 
-        class Wired(vc.VocetShortcutDriver):
-            def before_clip(self, clip):
-                pass
+class CompareTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.d = pathlib.Path(self.dir.name)
+        self.man = self.d / "manifest.csv"
+        with self.man.open("w", newline="") as fh:
+            w = csv.DictWriter(fh, list(MAN[0]))
+            w.writeheader()
+            w.writerows(MAN)
 
-            def _send(self, flag):
-                app.key(flag == "--press")
+    def tearDown(self):
+        self.dir.cleanup()
 
-            def feed(self, clip):
-                app.play(clip, clip.audio_s)
+    def run_dir(self, name, wrong=(), ids=None):
+        d = self.d / name
+        d.mkdir()
+        ids = ids or [m["clip_id"] for m in MAN]
+        rows = {c: {**{f: "" for f in vc.hn.FIELDS}, "clip_id": c, "status": "ok",
+                    "transcript": ("x" if c in wrong else f"Word{c[1:]}") + " one two three."} for c in ids}
+        vc.hn.write_rows(d / "results.csv", rows)
+        (d / "run.json").write_text(json.dumps({"fingerprint": name, "clip_ids": ids, "timed": True,
+                                                "manifest_sha256": vc.sc.digest(self.man)}))
+        return d
 
-        clips = [vc.hb.Clip("c1", pathlib.Path("c1.flac"), 2.0, "hello there")]
-        with tempfile.TemporaryDirectory() as d:
-            rows = vc.hb.run_all(clips, Wired("x", pathlib.Path(d) / "s.wav", vc.hb.Timing()), vc.hb.StubTarget(app),
-                                 clock, vc.hb.Timing(tail=0.5), pathlib.Path(d) / "r.csv", app="vocet", mode="cloud",
-                                 driver_name="vocet-shortcut", log=lambda *_: None)
-        self.assertEqual((rows["c1"]["status"], rows["c1"]["transcript"]), ("ok", "hello there"))
+    def test_identical_runs_agree_and_a_far_one_does_not(self):
+        a, b = self.run_dir("a"), self.run_dir("b")
+        res = vc.compare(a, b, self.man)
+        self.assertEqual((res["agree"], res["discordant_clips"], res["identical_text_share"]), (True, 0, 100.0))
+        far = self.run_dir("far", wrong={"c1", "c2", "c3"})  # 3 of 40 words wrong: 7.5 points
+        res = vc.compare(a, far, self.man)
+        self.assertEqual((res["agree"], res["discordant_clips"]), (False, 3))
+
+    def test_runs_over_different_clips_are_refused(self):
+        a = self.run_dir("a")
+        b = self.run_dir("b9", ids=[m["clip_id"] for m in MAN[:9]])  # complete for its own selection
+        with self.assertRaises(vc.sc.Incomplete):
+            vc.compare(a, b, self.man)
 
 
 if __name__ == "__main__":

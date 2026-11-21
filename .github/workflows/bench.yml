@@ -1,0 +1,68 @@
+# The dictation-app bench (eval/app_bench) on a GitHub-hosted macOS runner: one job per app, the app's
+# signed release set up without a person, a synthetic smoke dictation as the gate, then (full) all clips,
+# scored in the job. Accuracy only: a runner's speed is not representative. Uploads numbers only
+# (score.json, run.json): never audio, references or transcripts. No keys, never a required check.
+name: Bench
+
+on:
+  push:
+    branches: [mBENCH1-app-bench]
+    paths:
+      - "eval/app_bench/**"
+      - ".github/workflows/bench.yml"
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App (apps/<app>.json with hosted_setup true)
+        type: choice
+        options: [handy]
+      size:
+        description: smoke (one synthetic dictation) or full (all clips)
+        type: choice
+        options: [smoke, full]
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: ${{ inputs.app || 'handy' }} ${{ inputs.size || 'smoke' }}
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      APP: ${{ inputs.app || 'handy' }}
+      SIZE: ${{ inputs.size || 'smoke' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Machine
+        working-directory: eval/app_bench
+        run: |
+          command -v uv >/dev/null || brew install --quiet uv
+          ./bench machine --ci
+      - name: App
+        working-directory: eval/app_bench
+        run: ./bench setup --app "$APP" --ci
+      - name: Clips
+        if: env.SIZE == 'full'
+        working-directory: eval/app_bench
+        run: ./bench fetch
+      - name: Run
+        working-directory: eval/app_bench
+        run: ./bench run --app "$APP" "--$SIZE" --accuracy-only --machine github-macos-15 -o out/run
+      - name: Summary
+        if: always() && env.SIZE == 'full'
+        working-directory: eval/app_bench
+        run: |
+          [ -f out/run/score.json ] && ./bench verify out/run/score.json
+          [ -f out/run/score.json ] && ./bench table out/run/score.json >>"$GITHUB_STEP_SUMMARY"
+      - name: Upload numbers
+        if: always() && env.SIZE == 'full'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-${{ env.APP }}
+          path: |
+            eval/app_bench/out/run/score.json
+            eval/app_bench/out/run/run.json
+          if-no-files-found: warn
