@@ -33,3 +33,12 @@ Full run on 4a2bec8, `--exclude e2e_real_openrouter --exclude e2e_real_mic --exc
 
 ## Failures
 None. Note: `--no-build` runs of `e2e_dmg_install` need a fresh DMG, or they fail on stale UI.
+
+## Re-check on c7a4f18 (rounds 4 and 5)
+
+Head c7a4f18 (647b341 closed-window fix, c7a4f18 grants only while setup is shown); built fresh.
+- `scripts/gate.sh --full`: all checks passed.
+- dictation-vm, one run each: `e2e_setup_front_after_grant`, `e2e_onboarding_four_steps`, `e2e_connect_openrouter`, `e2e_onboarding_first_run`: 4 passed, 0 failed.
+- Not re-run: the rest of the suite; the Accessibility grant and a real Mac (as above).
+
+Result: still PASS.
