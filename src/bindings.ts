@@ -43,10 +43,22 @@ export const commands = {
 	 */
 	savedKeyHint: () => typedError<string | null, string>(__TAURI_INVOKE("saved_key_hint")),
 	/**
+	 *  Asks `OpenRouter` how much credit is left (within two seconds). `None`
+	 *  if no key is saved or nothing could be read: the window then shows no
+	 *  amount. Never logs the key or the reply.
+	 */
+	openrouterCredits: () => typedError<CreditView_Serialize | null, string>(__TAURI_INVOKE("openrouter_credits")),
+	/**
 	 *  The view the settings window shows and, for onboarding (M5.2), the step
 	 *  the user is on and the two permissions. Never blocks: the key isn't read.
 	 */
 	getOnboarding: () => typedError<OnboardingStatus, string>(__TAURI_INVOKE("get_onboarding")),
+	/**
+	 *  Get started on Welcome: the person agrees to the Terms and Privacy Policy.
+	 *  The date of the Terms is kept, and usage reports start (if the switch in
+	 *  Settings → Privacy is on): nothing is sent before this.
+	 */
+	acceptTerms: () => typedError<null, string>(__TAURI_INVOKE("accept_terms")),
 	/**
 	 *  Asks macOS for `permission`: its prompt while it hasn't been asked,
 	 *  System Settings at the permission's page once refused (Accessibility:
@@ -340,6 +352,34 @@ export type ConnectionResult_Serialize = {
 	message: string,
 };
 
+/**
+ *  The credit the saved key can spend, for the "Add credits" line (TOS1).
+ *  Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+ */
+export type CreditView = CreditView_Serialize | CreditView_Deserialize;
+
+/**
+ *  The credit the saved key can spend, for the "Add credits" line (TOS1).
+ *  Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+ */
+export type CreditView_Deserialize = {
+	/**  Credit left on the account. */
+	balance?: number | null,
+	/**  What is left of the key's own spending limit, if it has one. */
+	key_limit_left?: number | null,
+};
+
+/**
+ *  The credit the saved key can spend, for the "Add credits" line (TOS1).
+ *  Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+ */
+export type CreditView_Serialize = {
+	/**  Credit left on the account. */
+	balance: number | null,
+	/**  What is left of the key's own spending limit, if it has one. */
+	key_limit_left: number | null,
+};
+
 /**  Where the engine in use is. */
 export type EngineState = 
 /**  The on-device model is loading. */
@@ -471,6 +511,8 @@ export type Link =
 "openrouter_credits" | 
 /**  The privacy policy on the website. */
 "privacy" | 
+/**  The Terms on the website. */
+"terms" | 
 /**  The source code. */
 "repository" | 
 /**  The FSL-1.1-ALv2 licence. */
@@ -567,8 +609,6 @@ export type OnboardingStatus = {
 	 *  relaunch makes it take.
 	 */
 	needs_relaunch: boolean,
-	/**  Sharing has been on for the whole of this walk through setup. */
-	sharing_on_throughout: boolean,
 	/**
 	 *  Setup was finished, then a permission went missing: by a person's hand,
 	 *  or through an update signed differently (N1, #206). Until setup is
@@ -676,13 +716,11 @@ export type Step =
 "speech" | 
 /**  Allow the microphone and Accessibility. */
 "permissions" | 
-/**  The dictation key, and a practice dictation in the onboarding window. */
-"try" | 
 /**
- *  A summary of the real states, and the usage and error events switch;
- *  closes onboarding.
+ *  The dictation key, a practice dictation in the onboarding window, and
+ *  Done, which closes onboarding.
  */
-"ready";
+"try";
 
 /**  Where speech becomes text (L1). */
 export type Transcription = 

@@ -297,9 +297,7 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 setup_left(window.app_handle());
-                if let Err(error) = window.hide() {
-                    tracing::warn!(%error, "could not hide the settings window");
-                }
+                window::hide(window.app_handle());
             }
         })
         .setup(move |app| {
@@ -445,7 +443,13 @@ fn setup(app: &mut App, mut instance: Instance) -> anyhow::Result<()> {
     // Anonymous usage events (A1): on by default, a no-op without a build
     // key, silent in scripted test launches. They follow the stored choice
     // from here on, first setup included (U10).
-    let usage = usage::start(&data_dir, usage::stored_choice(&config), scripted, &version);
+    let usage = usage::start(
+        &data_dir,
+        usage::stored_choice(&config),
+        setup.terms_accepted(),
+        scripted,
+        &version,
+    );
     usage::launched(usage.clone(), &version);
     app.manage(usage.clone());
     let recordings = data_dir.join("debug-recordings");
@@ -523,6 +527,7 @@ fn setup(app: &mut App, mut instance: Instance) -> anyhow::Result<()> {
     ));
     // The menu reads the settings, engine and permissions from here on.
     tray_menu::start(app.handle());
+    commands::watch_grants(app.handle());
     tracing::info!(hotkey = %hotkey_control.spec(), "ready");
     onboarding_at_launch(
         app.handle(),
@@ -569,6 +574,10 @@ impl commands::Shell for TauriShell {
 
     fn show_onboarding_window(&self) {
         window::show(&self.0, onboarding::View::Onboarding);
+    }
+
+    fn bring_setup_forward(&self) {
+        window::bring_setup_forward(&self.0);
     }
 
     fn show_settings_window(&self) {

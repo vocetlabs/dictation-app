@@ -11,6 +11,11 @@ export function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
 }
 
+/** A download's size for a button: gigabytes from 1 GB up ("4.4 GB"), else megabytes. */
+export function downloadSize(bytes: number): string {
+  return bytes >= 1_000_000_000 ? gigabytes(bytes) : megabytes(bytes);
+}
+
 /** Without the unit, for "212 of 477 MB". */
 function mb(bytes: number): string {
   return String(Math.round(bytes / 1_000_000));
@@ -150,10 +155,27 @@ export const LOCAL_CAPTION = `${MODEL_TITLE} · works offline · nothing leaves 
 /** What one on-device download is (owner, Q4). */
 export const DOWNLOADING = "Downloading on-device models (speech + cleanup)";
 
+/** `bytes` as gigabytes with one decimal ("4.4 GB"). */
+export function gigabytes(bytes: number): string {
+  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+}
+
 /** "Downloading on-device models (speech + cleanup) · 4.4 GB". */
 export function downloadingText(model: LocalModelInfo_Serialize): string {
-  const gigabytes = (model.size_bytes ?? 0) / 1_000_000_000;
-  return `${DOWNLOADING} · ${gigabytes.toFixed(1)} GB`;
+  return `${DOWNLOADING} · ${gigabytes(model.size_bytes ?? 0)}`;
+}
+
+/**
+ * The whole on-device download, speech plus cleanup, summed from the
+ * catalogue ("4.4 GB"). `null` until the cleanup model is listed: there is
+ * no true size before that.
+ */
+export function wholeDownloadSize(
+  speech: LocalModelInfo_Serialize,
+  cleanup: LocalModelInfo_Serialize | null,
+): string | null {
+  if (cleanup === null) return null;
+  return gigabytes((speech.size_bytes ?? 0) + (cleanup.size_bytes ?? 0));
 }
 
 /** The cloud provider's name (Q2: `OpenRouter` only). */

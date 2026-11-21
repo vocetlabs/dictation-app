@@ -5,6 +5,7 @@
 pub mod check_key;
 pub mod cleanup;
 pub mod connect;
+pub mod credits;
 pub mod engine;
 pub mod http;
 pub mod llama;

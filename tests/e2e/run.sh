@@ -33,7 +33,7 @@ ALL_SCENARIOS=(
   e2e_secure_input_blocks_paste
   e2e_hold_release e2e_held_at_launch e2e_hotkey_listener_recovers
   e2e_quit_during_recording_then_relaunch e2e_tray_error_clears_on_next_recording
-  e2e_settings_save_reopen e2e_onboarding_first_run e2e_onboarding_five_steps
+  e2e_settings_save_reopen e2e_onboarding_first_run e2e_onboarding_four_steps
   e2e_settings_key_provider_recovery e2e_connect_openrouter e2e_cancel_and_busy_presses
   e2e_focus_switch_during_transcription e2e_unicode_multiline_selection_paste
   e2e_quit_during_transcription_then_relaunch
@@ -43,7 +43,7 @@ ALL_SCENARIOS=(
   e2e_dmg_install e2e_update_keeps_permissions
   e2e_launch_at_login
   e2e_hotkey_shortcuts e2e_no_words_transcript e2e_hotkey_recorder
-  e2e_accessibility_revoked e2e_setup_no_permissions
+  e2e_accessibility_revoked e2e_setup_no_permissions e2e_setup_front_after_grant
   e2e_local_model
   e2e_cleanup_applied e2e_cleanup_deadline
   e2e_first_paste_after_launch e2e_quit_right_after_paste

@@ -198,6 +198,44 @@ pub async fn saved_key_hint(
         })
 }
 
+/// The credit the saved key can spend, for the "Add credits" line (TOS1).
+/// Amounts are US dollars; a field is `None` when `OpenRouter` doesn't say.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, specta::Type)]
+pub struct CreditView {
+    /// Credit left on the account.
+    pub balance: Option<f64>,
+    /// What is left of the key's own spending limit, if it has one.
+    pub key_limit_left: Option<f64>,
+}
+
+/// Asks `OpenRouter` how much credit is left (within two seconds). `None`
+/// if no key is saved or nothing could be read: the window then shows no
+/// amount. Never logs the key or the reply.
+#[tauri::command]
+#[specta::specta]
+pub async fn openrouter_credits(
+    state: State<'_, AppConfig>,
+    engine: State<'_, LiveEngine>,
+) -> Result<Option<CreditView>, String> {
+    let (config, live) = (Arc::clone(&state.0), engine.inner().clone());
+    let key = tauri::async_runtime::spawn_blocking(move || live.read_key(&config))
+        .await
+        .map_err(|_| "the settings task crashed".to_owned())?
+        .map_err(|error| {
+            tracing::warn!(%error, "reading the saved key for the credit failed");
+            dictation_pipeline::config::ConfigError::Secret(error).to_string()
+        })?;
+    let Some(key) = key else {
+        return Ok(None);
+    };
+    let found = dictation_transcribe::credits::credits(&engine.provider_base_url(), &key).await;
+    tracing::debug!(known = found.is_some(), "asked OpenRouter for the credit");
+    Ok(found.map(|found| CreditView {
+        balance: found.balance,
+        key_limit_left: found.key_limit_left,
+    }))
+}
+
 /// `sk-or-…1234`: the family prefix, if it has one, and the last four.
 fn mask(key: &str) -> String {
     let chars: Vec<char> = key.chars().collect();

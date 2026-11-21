@@ -153,12 +153,43 @@ pub enum TrayIcon {
     Recording,
 }
 
-/// A model downloading. The menu calls it "speech model": it doesn't bring
-/// back the names Settings leaves to the "…" menu.
+/// The on-device models downloading. The menu calls them "on-device models",
+/// one download of speech and cleanup with one figure: it doesn't bring back
+/// the names Settings leaves to the "…" menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Download {
     /// Whether the settings already choose this model as the engine.
     pub chosen: bool,
+    /// How far the whole download is, in whole percent (0 to 100).
+    pub percent: u8,
+}
+
+/// The whole download's progress in whole percent: bytes on disk over bytes
+/// in all, for `(done, total)` of every part (speech, then cleanup). Clamped
+/// to 0 to 100; no known size is 0. Whole percent, so the menu changes only
+/// when the figure does.
+#[must_use]
+pub fn download_percent(parts: &[(f64, f64)]) -> u8 {
+    let (done, total) = parts
+        .iter()
+        .fold((0.0, 0.0), |(done, total), (d, t)| (done + d, total + t));
+    if total <= 0.0 {
+        return 0;
+    }
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "clamped to 0..=100"
+    )]
+    {
+        (done / total * 100.0).clamp(0.0, 100.0) as u8
+    }
+}
+
+/// The status row while the models download.
+#[must_use]
+pub fn download_label(percent: u8) -> String {
+    format!("↓ Downloading on-device models… {percent}%")
 }
 
 /// What the shell reads each second, apart from the pipeline's events. Read
@@ -455,9 +486,12 @@ impl TrayStatus {
                 fix_label(FixAction::Relaunch),
             ));
             format!("{APP_NAME}: {RELAUNCH_SENTENCE}")
-        } else if download.is_some() {
-            entries.push(Entry::disabled(id::STATUS, "↓ Downloading speech model…"));
-            format!("{APP_NAME}: downloading speech model")
+        } else if let Some(download) = download {
+            entries.push(Entry::disabled(
+                id::STATUS,
+                download_label(download.percent),
+            ));
+            format!("{APP_NAME}: downloading on-device models")
         } else {
             let key = keycap_label(&self.ambient.hotkey);
             entries.push(Entry::disabled(id::STATUS, format!("✓ Ready · Hold {key}")));
@@ -612,7 +646,10 @@ mod tests {
     #[test]
     fn u12_criterion_7_a_download_of_the_chosen_model_outranks_no_key() {
         let downloading = |chosen| Ambient {
-            download: Some(Download { chosen }),
+            download: Some(Download {
+                chosen,
+                percent: 42,
+            }),
             ..ambient("RightAlt")
         };
         for chosen in [true, false] {
@@ -628,7 +665,7 @@ mod tests {
             let menu = tray.menu();
             assert_eq!(
                 label_of(&menu, id::STATUS).as_deref(),
-                Some("↓ Downloading speech model…"),
+                Some("↓ Downloading on-device models… 42%"),
                 "chosen: {chosen}"
             );
             assert!(label_of(&menu, id::FIX_SPEECH).is_none());
@@ -641,7 +678,10 @@ mod tests {
     #[test]
     fn u12_criterion_7_a_download_doesnt_hide_other_problems() {
         let downloading = |chosen| Ambient {
-            download: Some(Download { chosen }),
+            download: Some(Download {
+                chosen,
+                percent: 42,
+            }),
             ..ambient("RightAlt")
         };
         let mut tray = ready("RightAlt");
@@ -661,6 +701,52 @@ mod tests {
         assert!(label_of(&tray.menu(), id::STATUS).unwrap().starts_with('!'));
     }
 
+    /// The owner's tray percentage: one combined figure for speech and
+    /// cleanup, in whole percent, clamped.
+    #[test]
+    fn the_download_percent_is_one_figure_for_all_parts() {
+        const GB: f64 = 1_000_000_000.0;
+        assert_eq!(download_percent(&[]), 0);
+        assert_eq!(download_percent(&[(0.0, 0.0)]), 0);
+        // Speech (1.32 GB) ready, cleanup (3.11 GB) a third in: (1.32 + 1.04) / 4.43.
+        assert_eq!(
+            download_percent(&[(1.32 * GB, 1.32 * GB), (1.04 * GB, 3.11 * GB)]),
+            53
+        );
+        assert_eq!(download_percent(&[(42.0, 100.0)]), 42);
+        assert_eq!(download_percent(&[(500.0, 100.0)]), 100);
+        assert_eq!(download_percent(&[(-5.0, 100.0)]), 0);
+        // Whole percent: 42.9 shows 42, so the menu changes at the next whole one.
+        assert_eq!(download_percent(&[(42.9, 100.0)]), 42);
+        assert_eq!(download_label(42), "↓ Downloading on-device models… 42%");
+    }
+
+    #[test]
+    fn the_status_row_follows_the_percent_and_the_tooltip_does_not() {
+        let mut tray = ready("RightAlt");
+        let at = |percent| Ambient {
+            download: Some(Download {
+                chosen: true,
+                percent,
+            }),
+            ..ambient("RightAlt")
+        };
+        tray.set_ambient(at(7));
+        let first = tray.menu();
+        assert_eq!(
+            label_of(&first, id::STATUS).as_deref(),
+            Some("↓ Downloading on-device models… 7%")
+        );
+        tray.set_ambient(at(8));
+        let second = tray.menu();
+        assert_eq!(
+            label_of(&second, id::STATUS).as_deref(),
+            Some("↓ Downloading on-device models… 8%")
+        );
+        assert_eq!(first.tooltip, second.tooltip);
+        assert!(!first.tooltip.contains('%'));
+    }
+
     #[test]
     fn criterion_1_ready_with_openrouter() {
         let menu = ready("Ctrl+Shift+Space").menu();
@@ -674,7 +760,10 @@ mod tests {
     fn criterion_1_downloading_shows_progress_and_no_fix() {
         let mut tray = ready("RightAlt");
         tray.set_ambient(Ambient {
-            download: Some(Download { chosen: true }),
+            download: Some(Download {
+                chosen: true,
+                percent: 42,
+            }),
             problem: Some(ErrorCode::ModelMissing),
             ..ambient("RightAlt")
         });
@@ -683,7 +772,7 @@ mod tests {
             menu.outline().first().cloned(),
             Some((
                 "status".to_owned(),
-                "↓ Downloading speech model…".to_owned()
+                "↓ Downloading on-device models… 42%".to_owned()
             ))
         );
         assert_eq!(&ids(&menu)[1], "-");
@@ -991,7 +1080,10 @@ mod tests {
         assert_eq!(tray.problem(), Some(ErrorCode::ModelMissing));
         tray.set_ambient(Ambient {
             engine_generation: 1,
-            download: Some(Download { chosen: true }),
+            download: Some(Download {
+                chosen: true,
+                percent: 42,
+            }),
             problem: Some(ErrorCode::ModelMissing),
             ..ambient("RightAlt")
         });

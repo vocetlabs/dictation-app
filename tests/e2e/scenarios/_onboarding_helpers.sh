@@ -42,18 +42,18 @@ obs_appearance() {
   sleep 2
 }
 
-# The onboarding window's fields, from the cua-driver daemon, which may capture
-# windows where an ssh session or a Terminal job may not.
+# The app's window with <title part> ("Set up" by default), from the cua-driver
+# daemon, which may capture windows where an ssh session or a Terminal job may not.
 obs_window() {
   vm "~/.local/bin/cua-driver call list_windows '{}'" |
-    jq -c '[.windows[] | select(.app_name == "'"$APP_NAME"'" and (.title | contains("Set up")))] | first // empty'
+    jq -c --arg title "${1:-Set up}" '[.windows[] | select(.app_name == "'"$APP_NAME"'" and (.title | contains($title)))] | first // empty'
 }
 
-# obs_shot <name>: the window, as <name>.png in the run's output.
+# obs_shot <name> [title part]: the window, as onboarding-<name>.png in the run's output.
 obs_shot() {
   local window id pid png="$OUT_DIR/onboarding-$1.png"
   sleep 1
-  window=$(obs_window)
+  window=$(obs_window "${2:-Set up}")
   if [ -z "$window" ]; then
     log "  no window for $1"
     return 0
@@ -63,4 +63,17 @@ obs_shot() {
   vm "rm -f /tmp/obs.png; ~/.local/bin/cua-driver call get_window_state '{\"pid\":$pid,\"window_id\":$id,\"include_accessibility_tree\":false,\"screenshot_out_file\":\"/tmp/obs.png\"}' >/dev/null" || true
   vm "base64 -i /tmp/obs.png" | base64 -d >"$png" || true
   log "  window screenshot $png: $(wc -c <"$png") bytes"
+}
+
+# obs_set_frame <app> <title part> <x> <y> <width> <height>: puts that app's
+# on-screen window at that frame, in points (the VM's screen is 960 by 720), through
+# the cua-driver daemon. Setup's smallest window is 680 by 520.
+obs_set_frame() {
+  local window id pid
+  window=$(vm "~/.local/bin/cua-driver call list_windows '{}'" |
+    jq -c --arg app "$1" --arg title "$2" '[.windows[] | select(.app_name == $app and .is_on_screen and (.title | contains($title)))] | first // empty')
+  [ -n "$window" ] || return 1
+  id=$(printf '%s' "$window" | jq -r .window_id)
+  pid=$(printf '%s' "$window" | jq -r .pid)
+  vm "~/.local/bin/cua-driver call set_window_frame '{\"pid\":$pid,\"window_id\":$id,\"x\":$3,\"y\":$4,\"width\":$5,\"height\":$6}' >/dev/null"
 }
