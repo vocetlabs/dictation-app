@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 const OLD_NAME: &str = "dictation-app";
 
 /// Lines that may name the old crate/identifier: nobody reads them.
-const INTERNAL: [&str; 6] = [
+const INTERNAL: [&str; 7] = [
     "github.com/vocetlabs/dictation-app", // URLs
+    "dictation-app/releases/",            // updater URL path prefixes
     "dictation-app overlay",              // the overlay's hidden window title
     "dictation-app.log",                  // the log file prefix
     "-p dictation-app",                   // cargo commands
