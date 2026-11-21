@@ -61,8 +61,9 @@ runs the smoke dictation as a gate, then the clips, and scores in the job. Runs 
 (`--accuracy-only`: a longer text deadline, no latency), since a shared runner's speed says little about a
 Mac. The job uploads `score.json`, `run.json` and (with a judge key) `judge.json` only.
 
-Apps with an unattended setup (`hosted_setup: true` in `apps/<app>.json`): Handy, Muesli, FluidVoice,
-VoiceInk and Vocet (built from the pinned commit). OpenWhispr and VoiceInk are set up by hand on a local Mac for now (their configs say why).
+Apps with an unattended setup (`hosted_setup: true` in `apps/<app>.json`): Handy, Muesli, FluidVoice and
+Vocet (built from the pinned commit). OpenWhispr and VoiceInk are set up by hand on a local Mac for now
+(their configs say why).
 
 ## Run it on a Mac (accuracy and speed)
 
