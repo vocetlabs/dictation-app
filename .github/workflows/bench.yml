@@ -15,7 +15,7 @@ on:
       app:
         description: App (apps/<app>.json with hosted_setup true)
         type: choice
-        options: [handy, voiceink, fluidvoice, muesli]
+        options: [handy, voiceink, fluidvoice, muesli, vocet]
       size:
         description: smoke (one synthetic dictation) or full (all clips)
         type: choice
@@ -33,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         # A dispatch runs the chosen app; a push smoke-tests every app with an unattended setup.
-        app: ${{ fromJSON(inputs.app && format('["{0}"]', inputs.app) || '["handy","voiceink","fluidvoice","muesli"]') }}
+        app: ${{ fromJSON(inputs.app && format('["{0}"]', inputs.app) || '["handy","voiceink","fluidvoice","muesli","vocet"]') }}
     env:
       APP: ${{ matrix.app }}
       SIZE: ${{ inputs.size || 'smoke' }}
