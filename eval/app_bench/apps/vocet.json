@@ -20,5 +20,6 @@
   "notes": "Setup's 'On this Mac' choice; built from source (no signed release of this commit). Usage sharing off.",
   "hosted_setup": true,
   "settings_files": ["~/Library/Application Support/com.dictationapp.desktop/settings.json"],
-  "logs": "~/Library/Logs/com.dictationapp.desktop/dictation-app.log*"
+  "logs": "~/Library/Logs/com.dictationapp.desktop/dictation-app.log*",
+  "log_counts": "cleanup outcome=\"([a-z_]+)\""
 }
