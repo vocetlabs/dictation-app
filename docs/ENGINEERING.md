@@ -269,7 +269,7 @@ the helper also can't take the app down.
 - **Cleanup** (Q2): after transcription and before the paste, the text goes
   to the cleanup model with the prompt in `crates/core/prompts/cleanup.txt`
   (the eval harness reads the same file). The reply is pasted only if the
-  guard (`dictation_core::cleanup::judge`) accepts it; a timeout (1.5 s,
+  guard (`dictation_core::cleanup::judge`) accepts it; a timeout (3 s,
   `dictation_core::cleanup::TIMEOUT`, the request is cancelled), an error or
   a refused reply pastes the raw transcript.
 
