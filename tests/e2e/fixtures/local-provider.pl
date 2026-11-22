@@ -37,6 +37,9 @@
 #                        request n=<n> path=<p> auth=good|bad|none model=<m>
 #                          language=<l> format=<f> audio_bytes=<b>
 #                        cleanup auth=good|bad|none status=<s>
+#                        warm auth=good|bad|none  a HEAD (the app's key-down
+#                          warm-up, LAT1): answered 200 with no body, never
+#                          numbered or counted as a request
 #                        cleanup_held       the cleanup reply is held
 #                        cleanup_closed     the client hung up while held
 #                        held n=<n>
@@ -331,6 +334,11 @@ sub serve {
     }
     $auth = ($want ne '' && sha256_hex($1) eq lc $want) ? 'good' : 'bad';
   }
+  if ($method eq 'HEAD') {
+    respond($sock, 200, 'OK', '');
+    event("warm auth=$auth");
+    return;
+  }
   if ($method eq 'GET' && $path =~ m{/credits$}) {
     my ($credits, $usage) = (10, 5.18);
     if (open my $fh, '<', "$dir/credits") {
@@ -367,6 +375,7 @@ sub serve {
       my $content = reply_text('cleanup-text', cleanup_input($json));
       hold($sock, 0, 'cleanup-gate', 'cleanup');
       $reply = JSON::PP->new->ascii->canonical->encode({
+        provider => 'FakeHost',
         choices => [{ message => { role => 'assistant', content => $content }, finish_reason => 'stop' }],
       });
       $status = 200;
