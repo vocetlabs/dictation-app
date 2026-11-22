@@ -114,7 +114,13 @@ e2e_dmg_guide_steps() {
   expect "section 4: Settings… opens from the tray" open_settings
   expect "the Speech section opens" ax_ok radio-press "$APP_NAME" "$SETTINGS_WINDOW" Speech
   # With OpenRouter chosen and no key, the connection sheet opens by itself.
-  expect "Paste a key instead opens the field (the browser sign-in can't run here)" \
+  # The browser sign-in can't finish here: pressing Connect waits, and after a
+  # while (or its failure) the sheet offers the paste fallback.
+  expect "press Connect OpenRouter" \
+    ax_ok press-first "$APP_NAME" "$SETTINGS_WINDOW" "Connect OpenRouter"
+  expect "Having trouble? Paste a key instead appears" \
+    ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Having trouble?" 30
+  expect "Paste a key instead opens the field" \
     ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" "Paste a key instead"
   expect "the key is typed into the key field" \
     ax_ok secret-set "$APP_NAME" "$SETTINGS_WINDOW" api-key "$PROVIDER_GOOD_KEY"

@@ -97,6 +97,17 @@ e2e_settings_key_provider_recovery() {
   expect "Manage… opens the sheet" ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" "Manage…"
   expect "it says OpenRouter is connected" \
     ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Connected" 10
+  expect "while connected there is no paste link" \
+    ax_ok wait-no-text "$APP_NAME" "$SETTINGS_WINDOW" "Paste a key instead" 2
+  # Disconnect, then Connect again: the fake has no key to hand out, so the
+  # browser sign-in fails and only then is the paste fallback offered.
+  expect "press Disconnect" ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" Disconnect
+  expect "the sheet says the key is removed" \
+    ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Disconnected. The key is removed." 15
+  expect "press Connect OpenRouter" \
+    ax_ok press-first "$APP_NAME" "$SETTINGS_WINDOW" "Connect OpenRouter"
+  expect "after the failed sign-in, Having trouble? Paste a key instead appears" \
+    ax_ok wait-text "$APP_NAME" "$SETTINGS_WINDOW" "Having trouble?" 30
   expect "Paste a key instead opens the field" \
     ax_ok press "$APP_NAME" "$SETTINGS_WINDOW" "Paste a key instead"
   expect "there is no Save button" sh -c '! ax press "$1" "$2" Save >/dev/null 2>&1' _ "$APP_NAME" "$SETTINGS_WINDOW"

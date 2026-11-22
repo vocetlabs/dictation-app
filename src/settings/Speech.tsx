@@ -5,7 +5,7 @@ import type { EngineStatus, LocalModelInfo_Serialize, Settings_Serialize } from 
 import { BROKEN, messageOf } from "../messages";
 import {
   downloadingText,
-  megabytes,
+  downloadSize,
   LOCAL_CAPTION,
   LOCAL_TITLE,
   modelDetails,
@@ -38,7 +38,7 @@ interface Props {
 function actionLabel(action: ModelAction, model: LocalModelInfo_Serialize): string {
   switch (action) {
     case "download":
-      return `Download · ${megabytes(model.size_bytes ?? 0)}`;
+      return `Download · ${downloadSize(model.size_bytes ?? 0)}`;
     case "cancel":
       // It keeps what came down, and Resume continues it.
       return "Pause";

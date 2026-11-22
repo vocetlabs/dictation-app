@@ -21,7 +21,7 @@ use dictation_core::diagnostics::{ErrorCode, FixAction};
 use dictation_core::settings::Transcription;
 use dictation_pipeline::history::History;
 use dictation_pipeline::tray::{
-    Ambient, Download, Entry, MenuModel, TrayIcon, TrayStatus, fix_from_id, id,
+    Ambient, Download, Entry, MenuModel, TrayIcon, TrayStatus, download_percent, fix_from_id, id,
 };
 use dictation_ports::{Permission, PermissionStatus};
 use tauri::image::Image;
@@ -222,23 +222,35 @@ fn read_ambient(app: &AppHandle) -> Ambient {
         .map(|active| active.0.spec().to_string())
         .unwrap_or_default();
     let live = app.try_state::<engine::LiveEngine>();
+    // "On this Mac" is one download, speech then cleanup, with one figure.
     let download = app
         .try_state::<ModelDownloads>()
         .zip(live.as_ref())
         .and_then(|(downloads, live)| {
-            downloads
-                .list(live)
-                .into_iter()
-                .find(|model| model.state == ModelState::Downloading)
+            let speech = downloads.list(live);
+            let speech = speech
+                .iter()
+                .find(|model| model.id == dictation_core::local_models::DEFAULT_MODEL)?;
+            let cleanup = downloads.list_cleanup(live);
+            let parts: Vec<_> = std::iter::once(speech).chain(&cleanup).collect();
+            parts
+                .iter()
+                .any(|model| model.state == ModelState::Downloading)
+                .then(|| {
+                    parts
+                        .iter()
+                        .map(|model| (model.downloaded_bytes, model.size_bytes))
+                        .collect::<Vec<_>>()
+                })
         })
-        .map(|model| {
+        .map(|parts| {
             let settings = app
                 .try_state::<commands::AppConfig>()
                 .and_then(|config| config.0.settings().ok())
                 .unwrap_or_default();
             Download {
-                chosen: settings.transcription == Transcription::Local
-                    && model.id == dictation_core::local_models::DEFAULT_MODEL,
+                chosen: settings.transcription == Transcription::Local,
+                percent: download_percent(&parts),
             }
         });
     let (mic, accessibility) = app.try_state::<onboarding::OsPermissions>().map_or(

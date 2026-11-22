@@ -2,20 +2,47 @@ import { useEffect, useRef, useState } from "react";
 import { commands } from "../bindings";
 import type { LocalModelInfo_Serialize, Settings_Serialize } from "../bindings";
 import { BROKEN, messageOf } from "../messages";
-import { modelLabel } from "../settings/modelRow";
-import { ConnectPanel, useConnection } from "../settings/connection";
+import { PROVIDER_NAME, wholeDownloadSize } from "../settings/modelRow";
+import {
+  ConnectNotices,
+  PasteKey,
+  creditLines,
+  useConnection,
+  useCredit,
+} from "../settings/connection";
 import type { Connection } from "../settings/connection";
 import { recommendedModel } from "./logic";
 import { StepFrame } from "./StepFrame";
 import type { FrameParts } from "./StepFrame";
 
-export const MODEL_COPY = "Runs on this Mac. Works offline after a one-time download.";
 export const KEY_REASON = "Continue unlocks once OpenRouter is connected";
-export const KEY_CARD_COPY =
-  "Needs internet. Your speech is sent to OpenRouter, using your own account.";
+/** For people who have never heard of OpenRouter (no price per hour: OpenRouter prices by the token). */
+export const OPENROUTER_EXPLAINER =
+  "OpenRouter is one account for many AI models. You add a few dollars of credit and pay only for what you use.";
 export const KEY_SAVED = "✓ Connected to OpenRouter";
-export const KEY_SAVED_COPY = "The key is in your macOS Keychain. It's never shown in full.";
-export const LOCAL_ONLY = "I'll use Vocet on this Mac only";
+
+/**
+ * The two cards' pros and cons, as the website's "Two ways to run" says them:
+ * a summary line, then short points. Nothing here is a number that hasn't
+ * been checked: no price, no speed, no memory.
+ */
+export const KEY_SUMMARY = "Cloud models, through an account of your own.";
+export const KEY_POINTS: readonly string[] = [
+  "Most accurate",
+  "Needs internet",
+  "Pay as you go: a few dollars of credit on your own OpenRouter account",
+  "OpenRouter is one account for many AI models.",
+];
+export const MODEL_SUMMARY = "English models that run on your Mac.";
+/** The points of "On this Mac"; `size` is the whole download ("4.4 GB"), once known. */
+export function modelPoints(size: string | null): readonly string[] {
+  return [
+    "Free, no account",
+    `Works offline after a one-time ${size === null ? "" : `${size} `}download`,
+    "Your audio and text never leave your Mac",
+    "Good accuracy, a bit below OpenRouter",
+  ];
+}
 
 /** The step's title. */
 export const SPEECH_TITLE = "How should Vocet transcribe?";
@@ -233,11 +260,6 @@ function SpeechForm({
         onBack={() => {
           void backFromKey();
         }}
-        onLocalOnly={() => {
-          void backFromKey().then((left) => {
-            if (left) pick("local");
-          });
-        }}
         onContinue={() => void go()}
       />
     );
@@ -277,8 +299,11 @@ function SpeechForm({
           }}
         />
         <span className="ob-option-text">
-          <span className="ob-card-title">Use OpenRouter</span>
-          <span className="ob-caption">{KEY_CARD_COPY}</span>
+          <span className="ob-card-title">
+            Use OpenRouter <span className="ob-tag">Recommended</span>
+          </span>
+          <span className="ob-caption">{KEY_SUMMARY}</span>
+          <Points points={KEY_POINTS} />
         </span>
       </label>
 
@@ -294,19 +319,19 @@ function SpeechForm({
           }}
         />
         <span className="ob-option-text">
-          <span className="ob-eyebrow">On this Mac</span>
-          {model === null ? (
-            modelsError === null ? (
-              <span className="ob-card-title">Loading the models…</span>
-            ) : (
-              <span role="alert" className="error">
-                Couldn&apos;t list the models: {modelsError}
-              </span>
-            )
+          <span className="ob-card-title">On this Mac</span>
+          {model === null && modelsError !== null ? (
+            <span role="alert" className="error">
+              Couldn&apos;t list the models: {modelsError}
+            </span>
           ) : (
             <>
-              <span className="ob-card-title">{modelLabel(model)}</span>
-              <span className="ob-caption">{MODEL_COPY}</span>
+              <span className="ob-caption">
+                {model === null ? "Loading the models…" : MODEL_SUMMARY}
+              </span>
+              <Points
+                points={modelPoints(model === null ? null : wholeDownloadSize(model, cleanup))}
+              />
             </>
           )}
         </span>
@@ -321,10 +346,24 @@ function SpeechForm({
   );
 }
 
+/** A card's short points. */
+function Points({ points }: { points: readonly string[] }) {
+  return (
+    <ul className="ob-points">
+      {points.map((point) => (
+        <li key={point}>{point}</li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * Connect OpenRouter: its own screen under Speech, so the rail doesn't move
- * (U11). The panel is Settings' own (`connection.tsx`), in a page and without
- * Disconnect. Continue unlocks once a key is saved, and a failure stays here.
+ * (U11). Calm (TOS1): not connected, one sentence, one button and a small
+ * "Paste a key instead"; connected, a tick, the credit left with "Add credits"
+ * beside it, and Continue. Disconnecting and pasting over a saved key stay in Settings.
+ * Continue unlocks once a key is saved, and a failure stays here. Back is the
+ * way to "this Mac only".
  */
 function KeyScreen({
   parts,
@@ -332,7 +371,6 @@ function KeyScreen({
   problem,
   working,
   onBack,
-  onLocalOnly,
   onContinue,
 }: {
   parts: FrameParts;
@@ -340,11 +378,12 @@ function KeyScreen({
   problem: string | null;
   working: boolean;
   onBack: () => void;
-  onLocalOnly: () => void;
   onContinue: () => void;
 }) {
   const { status, busy } = connection;
   const connected = status.state === "connected";
+  // The balance comes when it comes; nothing waits for it.
+  const lines = creditLines(useCredit(connected));
   const blockedBecause = working
     ? "One moment…"
     : status.state === "checking"
@@ -354,31 +393,61 @@ function KeyScreen({
         : KEY_REASON;
   return (
     <StepFrame
-      parts={{
-        ...parts,
-        back: onBack,
-        // Once the key is being written nothing leaves, as in Settings' sheet.
-        exitBlock: parts.exitBlock ?? (busy === "saving" ? "Saving your key…" : null),
-      }}
+      parts={{ ...parts, back: onBack }}
       title="Connect OpenRouter"
       primary={{ label: "Continue", onClick: onContinue, blockedBecause }}
     >
-      {connected && !connection.justConnected && (
-        <div className="ob-key-saved">
-          <div className="ob-card-text">
-            <span role="status" className="ob-key-saved-title">
+      <div className="ob-connect" id="connect-panel">
+        {connected ? (
+          <>
+            <p role="status" className="ob-key-saved-title">
               {KEY_SAVED}
-            </span>
-            <span className="ob-caption">{KEY_SAVED_COPY}</span>
-          </div>
-        </div>
-      )}
-      <div className="ob-key-panel">
-        <ConnectPanel connection={connection} canDisconnect={false} />
+            </p>
+            <div className="ob-credit">
+              {lines.length > 0 && (
+                <span className="ob-credit-lines" id="connect-credit">
+                  {lines.map((line) => (
+                    <span key={line}>{line}</span>
+                  ))}
+                </span>
+              )}
+              <button type="button" onClick={connection.addCredits}>
+                Add credits
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>{OPENROUTER_EXPLAINER}</p>
+            {busy === "connecting" ? (
+              <div className="row">
+                <span role="status">Waiting for {PROVIDER_NAME} in your browser…</span>
+                <button type="button" onClick={() => void connection.cancel()}>
+                  Cancel
+                </button>
+              </div>
+            ) : busy === "saving" ? (
+              <span role="status">Saving your key…</span>
+            ) : (
+              <button
+                type="button"
+                className="primary"
+                disabled={busy !== null || status.state === "checking"}
+                onClick={() => void connection.connect()}
+              >
+                Connect OpenRouter
+              </button>
+            )}
+            {busy === null && status.state === "error" && (
+              <button type="button" onClick={() => void connection.refresh()}>
+                Retry
+              </button>
+            )}
+            <PasteKey connection={connection} />
+          </>
+        )}
+        <ConnectNotices connection={connection} />
       </div>
-      <button type="button" className="link" onClick={onLocalOnly}>
-        {LOCAL_ONLY}
-      </button>
       {problem !== null && (
         <p role="alert" className="notice error">
           {problem}

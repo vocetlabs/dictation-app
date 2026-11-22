@@ -58,6 +58,9 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, view: View) {
     if let Err(error) = fit(&window, view) {
         tracing::warn!(%error, "could not size the settings window");
     }
+    if let Some(onboarding) = app.try_state::<std::sync::Arc<crate::onboarding::Onboarding>>() {
+        onboarding.set_window_open(true);
+    }
     let shown = window
         .set_title(title(view))
         .and_then(|()| window.unminimize())
@@ -69,8 +72,29 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, view: View) {
     }
 }
 
+/// Brings setup to the front after a grant. The check that setup is still
+/// shown runs on the window thread, right before the show, where the close
+/// handler also runs: a close after the grant was taken wins.
+pub fn bring_setup_forward<R: Runtime>(app: &AppHandle<R>) {
+    let handle = app.clone();
+    let queued = app.run_on_main_thread(move || {
+        let open = handle
+            .try_state::<std::sync::Arc<crate::onboarding::Onboarding>>()
+            .is_some_and(|onboarding| onboarding.window_open());
+        if open {
+            show(&handle, View::Onboarding);
+        }
+    });
+    if let Err(error) = queued {
+        tracing::warn!(%error, "could not bring setup forward");
+    }
+}
+
 /// Hides the window.
 pub fn hide<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(onboarding) = app.try_state::<std::sync::Arc<crate::onboarding::Onboarding>>() {
+        onboarding.set_window_open(false);
+    }
     let Some(window) = app.get_webview_window(MAIN) else {
         return;
     };
