@@ -553,7 +553,9 @@ async fn complete_at(
         .await
         .map_err(|e| LlamaError::Request(e.without_url().to_string()))?;
     // The cloud cleaner's reading: a finished reply only, without the tags.
-    crate::cleanup::parse_reply(&bytes).ok_or(LlamaError::Reply)
+    crate::cleanup::parse_reply(&bytes)
+        .map(|(reply, _)| reply)
+        .ok_or(LlamaError::Reply)
 }
 
 impl ChatRunner for LlamaServer {

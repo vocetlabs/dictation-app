@@ -38,6 +38,7 @@ python3 eval/report.py <run folder> [--baseline <run folder>] # 5. ZER, AMEND, t
 | `regress.sh` | the prompt/model regression check below |
 | `evalcommon.py` | the split rule, and where the app's cleanup prompt is |
 | `prompts/` | `v1-blurt-smart.txt`, `v3.txt`, `v4.txt` (v4 is the app's cleanup prompt) |
+| `bench1_vm.sh` | BENCH1, internal: runs the dictation bench ([vocetlabs/dictation-bench](https://github.com/vocetlabs/dictation-bench), its own MIT repository) in this Mac's Lume VM, for local and quiet-Mac timed runs; results in `reports/bench1.md` |
 
 **The app's prompt.** `regress.sh` and `evalcommon.app_prompt_path()` read the prompt the app ships so eval and
 app can't drift: `crates/core/prompts/cleanup.txt` once Q2 puts it there, until then `prompts/v4.txt` (the same

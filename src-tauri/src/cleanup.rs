@@ -349,6 +349,19 @@ impl<C: Cleaner, R: ChatRunner + 'static> Cleaner for AppCleaner<C, R> {
         }
     }
 
+    async fn clean_with_host(&self, text: &str) -> Result<(String, Option<String>), CleanupError> {
+        match self.local() {
+            Some(local) => local.clean(text).await.map(|reply| (reply, None)),
+            None => self.cloud.clean_with_host(text).await,
+        }
+    }
+
+    async fn warm_up(&self) {
+        if self.local().is_none() {
+            self.cloud.warm_up().await;
+        }
+    }
+
     fn deadline(&self) -> Option<std::time::Duration> {
         self.local()
             .map_or_else(|| self.cloud.deadline(), |local| local.deadline())

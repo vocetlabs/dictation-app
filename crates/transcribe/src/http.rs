@@ -68,6 +68,14 @@ pub(crate) fn client(base_url: &str) -> Result<Client, TranscribeError> {
         .map_err(|e| failed("HTTP client", &e))
 }
 
+/// Opens (or keeps warm) a connection to `url` by a bodiless `HEAD`: the TCP
+/// and TLS set-up land in `client`'s pool, so the next request on it reuses
+/// them. No key, audio or text is sent; the answer and any failure are
+/// ignored.
+pub(crate) async fn warm_up(client: &Client, url: &str) {
+    let _ = client.head(url).timeout(CONNECT_TIMEOUT).send().await;
+}
+
 /// The client model downloads use (L1): the same TLS setup, `stall` to
 /// connect and between reads (no limit on the whole download), and redirects
 /// followed only to `https` URLs, at most `max_redirects` times (Hugging

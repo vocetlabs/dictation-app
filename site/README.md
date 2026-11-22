@@ -17,5 +17,5 @@ Deploys are automatic: Cloudflare Workers Builds watches `site/*` on the default
 - `wrangler.jsonc` names the Worker and keeps its domains: `vocetlabs.com`, `www.vocetlabs.com` and the `workers.dev` address. A domain added in the dashboard must also be added here, or the next deploy drops it.
 - `.assetsignore` keeps this README and the config off the site.
 - No API token lives in the repo: the Cloudflare GitHub app does the build. Preview builds for other branches are off, so only merged changes go live.
-- Dashboard settings (vocetlabs → Settings → Builds): root directory `site/`, no build command, deploy command `npx wrangler deploy`, watch path `site/*`.
+- Dashboard settings (vocetlabs → Settings → Builds): repository `vocetlabs/dictation-app`, branch `main`, root directory `/site`, no build command, deploy command `npx wrangler deploy`, include path `site/*`, preview builds off. Reconnected after the repo move on 2026-11-21 (#358).
 - To roll back: vocetlabs → Deployments, pick an earlier version, Rollback. Before changing copy about data or analytics, check it against `docs/privacy.md`, which must match the code.

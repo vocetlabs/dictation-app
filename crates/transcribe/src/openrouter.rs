@@ -163,10 +163,16 @@ impl OpenRouter<TokioWait> {
     ///
     /// [`TranscribeError::Engine`] if the HTTP client can't be built.
     pub fn new(config: Config, key: Secret) -> Result<Self, TranscribeError> {
+        let client = crate::http::client(&config.base_url)?;
+        Ok(Self::with_client(config, key, client))
+    }
+
+    /// As [`new`](Self::new), on a client the cleanup engine shares.
+    pub(crate) fn with_client(config: Config, key: Secret, client: Client) -> Self {
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos() as u64);
-        Self::with_wait(config, key, TokioWait, seed)
+        Self::with_parts(config, key, TokioWait, seed, client)
     }
 }
 
@@ -184,18 +190,22 @@ impl<W: Wait> OpenRouter<W> {
         seed: u64,
     ) -> Result<Self, TranscribeError> {
         let client = crate::http::client(&config.base_url)?;
+        Ok(Self::with_parts(config, key, wait, seed, client))
+    }
+
+    fn with_parts(config: Config, key: Secret, wait: W, seed: u64, client: Client) -> Self {
         let endpoint = format!(
             "{}/audio/transcriptions",
             config.base_url.trim_end_matches('/')
         );
-        Ok(Self {
+        Self {
             client,
             endpoint,
             config,
             key,
             wait,
             rng: Arc::new(Mutex::new(SplitMix64::new(seed))),
-        })
+        }
     }
 
     /// Transcribes `audio`.
