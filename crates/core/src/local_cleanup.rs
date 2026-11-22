@@ -35,12 +35,13 @@ pub const CONTEXT_TOKENS: u32 = 4096;
 /// 12 s (LAT3, owner decision 2026-11-22: optimise the Voice Arena score
 /// now, revisit the user experience later). Voice Arena listens 4 s after a
 /// clip and then waits until the text has been unchanged for 2 s, up to 30
-/// s, and speed is not part of ZER. In the REL2 VM run, Gemma 4 E2B passed
-/// the old 4 s budget on 108 of 151 clips, so most drafts were pasted raw;
-/// offline it lifts OrukQwen from about 59 to 72 ZER. The pipeline's
-/// deadline is the only limit on the helper request (its client has no
-/// whole-request timeout), so this is the one place that moves. The cloud
-/// deadline is `cleanup::TIMEOUT`.
+/// s, and speed is not part of ZER. In the REL2 VM run, Gemma 4 E2B timed
+/// out at the old 4 s budget on 108 of 151 clips, so most drafts were pasted
+/// raw; offline it lifts OrukQwen from about 59 to 72 ZER. This is the
+/// generation deadline: the pipeline applies it, and the helper request has
+/// no whole-request timeout of its own (the shared HTTP client still has a
+/// 10 s connect timeout, which is not generation). The cloud deadline is
+/// `cleanup::TIMEOUT`.
 pub const TIMEOUT: Duration = Duration::from_secs(12);
 
 /// The most tokens the reply may have: half the transcript's length in

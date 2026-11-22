@@ -5,12 +5,12 @@ filed).
 
 Voice Arena's harness keeps listening 4 s after a clip, then waits until the text has been unchanged for 2 s,
 up to 30 s (methodology PDF §4.1–4.2). Speed is not part of ZER. In the REL2 VM run, local cleanup (Gemma 4
-E2B) passed its 4 s budget on 108 of 151 clips, so most local drafts were raw OrukQwen. Offline, Gemma lifts
+E2B) timed out at its 4 s budget on 108 of 151 clips, so most local drafts were raw OrukQwen. Offline, Gemma lifts
 OrukQwen from about 59 to 72 ZER. Cloud stays at 3 s (LAT2; owner: good for users too).
 
 ## Acceptance criteria
 
-1. `[auto]` The on-device cleanup budget becomes 12 s. Find where the 4 s lives: the local cleaner, the
+1. `[auto]` The on-device cleanup budget (the generation deadline; the shared HTTP client keeps its 10 s connect timeout) becomes 12 s. Find where the 4 s lives: the local cleaner, the
    pipeline deadline, or the llama-server request timeout. Every layer that would cut a reply off before
    12 s moves with it, including the helper's HTTP timeout and any max_tokens- or time-based limits. The
    comment cites this evidence and the owner decision. Tests pinning 4 s are updated. The cloud deadline
