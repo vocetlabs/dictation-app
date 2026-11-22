@@ -28,6 +28,10 @@ pub enum Event {
     /// The hotkey source lost track of the keyboard, so the hotkey's
     /// release may never arrive: a recording in progress is dropped.
     HotkeyInterrupted,
+    /// The hotkey source lost track of the keyboard, but the hotkey is
+    /// still held by the OS's account (#364): a recording goes on, but only
+    /// a release seen afterwards transcribes it.
+    HotkeyResynced,
     /// The hotkey source stopped listening after an error: no more presses
     /// will arrive until it is started again.
     HotkeyFailed,
@@ -96,6 +100,7 @@ impl fmt::Debug for Event {
             Event::HotkeyReleased(at) => f.debug_tuple("HotkeyReleased").field(at).finish(),
             Event::CancelPressed => f.write_str("CancelPressed"),
             Event::HotkeyInterrupted => f.write_str("HotkeyInterrupted"),
+            Event::HotkeyResynced => f.write_str("HotkeyResynced"),
             Event::HotkeyFailed => f.write_str("HotkeyFailed"),
             Event::Tick(now) => f.debug_tuple("Tick").field(now).finish(),
             Event::AudioCaptured => f.write_str("AudioCaptured"),
