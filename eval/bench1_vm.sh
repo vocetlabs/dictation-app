@@ -68,6 +68,7 @@ job_lock() {
 
 # vm_terminal <argv...>: runs the command in the VM's Terminal (Accessibility lives there) from ~/bench, in a
 # job folder of its own (mktemp in the VM); waits (bounded) for its status; prints the log; returns the status.
+# Callers run it on the left of `||`, where errexit is off: every SSH step is checked here.
 vm_terminal() {
   local job start=$SECONDS st
   job_lock
@@ -75,15 +76,15 @@ vm_terminal() {
   { printf '#!/bin/zsh\ncd %s || exit 97\n( ' "$(q "$VM_DIR")"; q "$@"
     printf ') >%s 2>&1\nst=$?\necho $st >%s && mv -f %s %s\n' "$(q "$job/log")" "$(q "$job/status.tmp")" \
       "$(q "$job/status.tmp")" "$(q "$job/status")"
-  } | vm "cat >$(q "$job/job.command") && chmod +x $(q "$job/job.command")"
-  vm "open -a Terminal $(q "$job/job.command")"
+  } | vm "cat >$(q "$job/job.command") && chmod +x $(q "$job/job.command")" || die "could not upload the job to the VM"
+  vm "open -a Terminal $(q "$job/job.command")" || die "could not open the job in the VM's Terminal"
   until vm "test -f $(q "$job/status")" 2>/dev/null; do
     [ $((SECONDS - start)) -lt "$WAIT_LIMIT" ] || die "no status after ${WAIT_LIMIT}s; see $job/log in the VM"
     vm "tail -n 1 $(q "$job/log")" 2>/dev/null | cut -c1-160 || echo "(VM not answering)"
     sleep 30
   done
-  st=$(vm "cat $(q "$job/status")")
-  vm "cat $(q "$job/log")"
+  st=$(vm "cat $(q "$job/status")") || die "could not read the job status in the VM"
+  vm "cat $(q "$job/log")" || echo "bench1_vm: could not read $job/log in the VM" >&2
   [[ $st =~ ^[0-9]+$ ]] || die "unreadable job status"
   return "$st"
 }
