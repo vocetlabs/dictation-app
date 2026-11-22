@@ -22,8 +22,7 @@ Numbers only. No judging yet, so the judge column is empty. 2026-11-22, M4 Pro 2
 - **Models:** each GGUF's SHA-256 equals the Hugging Face LFS id of the repo and file below. Eight were
   already on disk (`~/vocet-cleanup-models`, left alone); Llama 3.2 1B and the two Granite 4.0 files were
   downloaded and are deleted after the run. Nothing was dropped for lacking a GGUF. Gemma 4 E2B is the smallest
-  Gemma 4, so Gemma 3 1B is the smaller Gemma. Gemma 3 270M was not run: the disk had 11 GB free, below the
-  40 GB download rule.
+  Gemma 4, so Gemma 3 1B is the smaller Gemma. Gemma 3 270M (`unsloth/gemma-3-270m-it-GGUF`) was run after disk space was freed.
 
 ## Results
 
@@ -46,9 +45,11 @@ one empty draft).
 | Granite 4.0 H 350M (`granite4.0-350m`) | 0.22 GB | Apache-2.0 | 7/150 | 26.7% | 186 / 1270 | 33 | 0.33 | 482 | – | |
 | Granite 4.0 1B (`granite4.0-1b`) | 1.02 GB | Apache-2.0 | 0/0 | – | 1347 / 4826 | 47 | 0.32 | 2558 | – | |
 | Granite 4.2 3B (`granite4.2-3b`) | 2.24 GB | Apache-2.0 | 3/151 | 24.5% | 516 / 3204 | 88 | 0.43 | 2635 | – | |
+| Gemma 3 270M (`gemma3-270m`) | 0.25 GB | Gemma terms (restrictive) | 137/144 | 4.2% | 506 / 904 | 17 | 0.53 | 683 | – | |
 
 - **Granite 4.0 1B** produced only `!` characters on every clip with this Metal build, so its row is not a
   result. Its 1.3 s p50 is the cost of generating a full-length degenerate reply.
+- **Gemma 3 270M** failed the guard on 137 of 151 clips (119 echoes, 14 dropped names, 4 too long, 7 empty drafts not asked), so it cannot clean.
 - The VM column stays empty until the Lead says the VM is free.
 
 ## Reproduce
@@ -66,4 +67,4 @@ Each run writes `results.csv` (harness format for the bench judge) and `summary.
 
 ## Not done yet
 
-Judge columns, the VM (8 GB, 4 cores) repeat for the top 3, and Gemma 3 270M.
+Judge columns and the VM (8 GB, 4 cores) repeat for the top 3.
