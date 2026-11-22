@@ -1,9 +1,9 @@
 # BENCH1: Vocet and other open-source Mac dictation apps on the same 151 clips
 
 Spec: `docs/history/milestones/BENCH1.md`. The bench is its own MIT repository,
-[vocetlabs/dictation-bench](https://github.com/vocetlabs/dictation-bench), split with its history from
-[`eval/app_bench/`](../app_bench/) here (the two are kept in step); its README has the method, the app
-configurations and how to reproduce. This page is the milestone's report.
+[vocetlabs/dictation-bench](https://github.com/vocetlabs/dictation-bench) (built on this branch, then split
+out with its history); its README has the method, the app configurations and how to reproduce. This page is
+the milestone's report.
 
 ## Results
 
@@ -47,16 +47,15 @@ _pending_. Key-up to text on the runner was 12-56 s per clip; it is not a speed 
 
 ## Vocet: black box vs `--debug-audio-file` (acceptance criterion 2)
 
-`eval/bench1_vocet_check.py` (internal, not part of the bench) runs a debug build of Vocet through its
-`--debug-audio-file` shortcut with the bench's loop, and `compare` pairs it with a black-box run of the same
-build and settings. Agreement, fixed before running: both cover exactly the same clips with app outcomes,
-and their intended-text WERs differ by at most 1.5 points; the report also gives the discordant clips and
-the share of identical normalized texts. _Not run yet: it needs a Mac or VM with the debug build and Vocet's
-grants (`eval/bench1_vm.sh`)._
+Not done. A check that drove Vocet's debug-only `--debug-audio-file` shortcut through the bench's loop and
+compared it with a black-box run (full paired coverage, intended-WER difference within 1.5 points, fixed
+beforehand) was written, but it was dropped from this branch when the bench moved to its own repository: it
+needs the bench checked out and couldn't be tested by this repository's gate. Follow-up issue below.
 
 ## Runs in this repo
 
-`eval/bench1_vm.sh` (internal) runs `./bench` inside the Lume VM `dictation-vm-bench` (a clone of
+`eval/bench1_vm.sh` (internal) runs the bench (`BENCH_DIR`, a local clone of vocetlabs/dictation-bench) inside
+the Lume VM `dictation-vm-bench` (a clone of
 `dictation-vm-golden`, 8 GB, 4 CPUs, macOS 15.6.1) while holding the `dictation-vm-2` e2e lock, and logs host
 load at the start and end of each run. In that VM, granting Accessibility to a third-party app needs the VM
 user's password at macOS's sheet, which takes a person at the VM's display (keys sent over VNC don't reach

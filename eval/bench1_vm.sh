@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
-# BENCH1, internal: runs eval/app_bench (./bench) inside this Mac's Lume VM dictation-vm-bench, a clone of
-# dictation-vm-golden that stands in for dictation-vm-2 while it holds that VM's e2e lock (the Lead,
-# 2026-11-21), so a Tester's tests/e2e/run.sh says "VM busy" instead of resetting a VM in use. Not part of
-# the publishable bench folder.
+# BENCH1, internal: runs the dictation bench (github.com/vocetlabs/dictation-bench, ./bench) inside this
+# Mac's Lume VM dictation-vm-bench, a clone of dictation-vm-golden that stands in for dictation-vm-2 while it
+# holds that VM's e2e lock (the Lead, 2026-11-21), so a Tester's tests/e2e/run.sh says "VM busy" instead of
+# resetting a VM in use. For local and quiet-Mac timed runs; the bench's own CI runs accuracy on GitHub.
+# BENCH_DIR is a local clone of the bench (default: dictation-bench next to this repository's clone).
 #
 #   eval/bench1_vm.sh lock | unlock          # dictation-vm-2's e2e lock, held by a sleeper process
 #   eval/bench1_vm.sh vm-create              # clone the golden image (once; 8 GB, 4 CPUs)
 #   eval/bench1_vm.sh vm-start [--timed] | vm-stop     # --timed refuses while any other VM runs
-#   eval/bench1_vm.sh push                   # the bench folder and the clips into ~/bench in the VM
+#   eval/bench1_vm.sh push                   # the bench (BENCH_DIR) and its clips into ~/bench in the VM
 #   eval/bench1_vm.sh install <App.app|App.dmg>        # into /Applications in the VM
 #   eval/bench1_vm.sh bench <./bench args>   # ./bench in the VM's Terminal (Accessibility lives there),
 #                                            #   waits, prints the log; e.g. bench run --app vocet --smoke
 #   eval/bench1_vm.sh pull <app>-<machine>   # out/<run>/{run.json,results.csv,score.json} back to the host
 #   eval/bench1_vm.sh ssh <cmd> | screenshot <png> | cua <tool> '<json>'
 #
-# Host load (load average, free memory) is appended to eval/app_bench/out/host_load.txt at the start and
-# end of every `bench run`.
+# Host load (load average, free memory) is appended to $BENCH_DIR/out/host_load.txt at the start and end
+# of every `bench run`.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-BENCH=$HERE/app_bench
+common=$(cd "$HERE/.." && git rev-parse --path-format=absolute --git-common-dir)  # <clone>/.git
+BENCH=${BENCH_DIR:-$(dirname "$(dirname "$common")")/dictation-bench}
 VM=dictation-vm-bench
 GOLDEN=dictation-vm-golden
 LOCK=${E2E_LOCK_DIR:-$HOME/.cache/dictation-e2e}/dictation-vm-2.lock
@@ -96,12 +98,13 @@ case "$cmd" in
     vm "osascript -e 'tell application \"System Events\" to shut down'" 2>/dev/null || lume stop "$VM"
     ;;
   push)
-    [ -f "$BENCH/clips/manifest.csv" ] || die "no clips: eval/app_bench/bench fetch"
+    [ -d "$BENCH" ] || die "no bench at $BENCH: git clone https://github.com/vocetlabs/dictation-bench (or set BENCH_DIR)"
+    [ -f "$BENCH/clips/manifest.csv" ] || die "no clips: $BENCH/bench fetch"
     vm "test -x ~/.local/bin/uv || curl -LsSf https://astral.sh/uv/install.sh | sh" >/dev/null
     vm "mkdir -p $VM_DIR"
-    tar -C "$BENCH" --exclude clips --exclude out --exclude work --exclude __pycache__ -cf - . | vm "tar -C $VM_DIR -xf -"
+    tar -C "$BENCH" --exclude clips --exclude out --exclude work --exclude __pycache__ --exclude .git -cf - . |
+      vm "tar -C $VM_DIR -xf -"
     tar -C "$BENCH" -cf - clips | vm "rm -rf $VM_DIR/clips && tar -C $VM_DIR -xf -"
-    tar -C "$HERE" -cf - bench1_vocet_check.py | vm "tar -C $VM_DIR -xf -"
     vm "ls $VM_DIR"
     ;;
   install)
