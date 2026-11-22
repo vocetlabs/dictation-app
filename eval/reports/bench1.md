@@ -7,12 +7,32 @@ configurations and how to reproduce. This page is the milestone's report.
 
 ## Results
 
-_Pending: the first full runs (all 151 clips, GitHub-hosted macOS runners, accuracy only, judge on)._
+First full runs, 2026-11-22: [vocetlabs/dictation-bench run 44959966210](https://github.com/vocetlabs/dictation-bench/actions/runs/44959966210),
+one GitHub-hosted `macos-15` runner per app (Apple M1 virtual, 3 cores, 7 GB, paravirtual GPU), all 151 clips,
+accuracy only (`--accuracy-only`: 60 s text deadline, no latency reported). Judge: `anthropic/claude-opus-5.5`
+through OpenRouter, reasoning effort high, amend-va 0.2.1 prompt `v1` (fingerprint `8ed04caf4663`). Every run
+has exactly one app outcome per clip and no infrastructure faults; the numbers come from the uploaded
+`score.json` and `judge.json`, which `./bench verify` recomputes.
 
-Accuracy (WER against the intended and spoken texts; ZER and AMEND from the optional judge) comes from
-GitHub-hosted macOS runners, one job per app, numbers-only artifacts. Speed (end of speech to final text,
-p50/p95, with the failure rate) needs a quiet real Mac and is not measured yet. The two sources are reported
-in separate tables.
+| App | Version | Local model | Outcomes | WER intended % | WER spoken % | ZER % | AMEND % |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Muesli | 0.8.6 | Parakeet Unified EN 0.6B, Core ML | 151 ok | 7.56 | 10.02 | 50.3 | 1.25 |
+| Handy | 0.10.1 | Parakeet Unified EN 0.6B, Q8_0 GGUF | 151 ok | 7.98 | 9.71 | 49.7 | 1.50 |
+| FluidVoice | 1.6.13 | Parakeet TDT 0.6B v3, Core ML | 151 ok | 10.48 | 9.33 | 49.0 | 2.30 |
+| Vocet | a7c7a46 (source) | OrukQwen 1.7B + Gemma 4 E2B cleanup | 150 ok, 1 late | 12.95 | 8.98 | 58.9 | 4.19 |
+
+Lower WER and AMEND are better; higher ZER is better. WER against the intended text rewards an app that
+writes what the speaker meant (punctuation and casing don't count, but cleanup that drops filler words or
+fixes self-corrections does); WER against the spoken text rewards a verbatim transcript. A clip with no
+output (Vocet's one `late` clip, text after the 60 s deadline) counts every reference word, and in AMEND
+every intended character, as an error.
+
+**Vocet's row on a runner.** Its on-device cleanup (Gemma 4 E2B) has a 4 s budget per dictation; on a 3-core
+virtual runner it likely timed out on most clips, so Vocet pasted the raw OrukQwen text (best spoken WER,
+worst intended WER). The rerun below counts the cleanup outcomes from Vocet's own log (numbers only):
+_pending_. Key-up to text on the runner was 12-56 s per clip; it is not a speed measurement.
+
+**Speed** (end of speech to final text, p50/p95, failure rate) needs a quiet real Mac and is not measured yet.
 
 ## Apps
 
