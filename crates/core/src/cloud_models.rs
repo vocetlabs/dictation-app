@@ -14,10 +14,10 @@ pub const SPEECH_MODEL: &str = "openai/gpt-4o-mini-transcribe";
 /// for low effort; they carry [`PrivacyFilter::ZeroDataRetention`].
 pub const CLEANUP_MODEL: &str = "z-ai/glm-5.3-flash";
 
-/// The hosts cleanup asks `OpenRouter` to try first, in order (LAT1, LAT1b).
+/// The hosts cleanup asks `OpenRouter` to try first, in order (LAT1, `LAT1b`).
 /// LAT1 (2026-11-22, 150 dictations): GLM spread over 19 hosts timed out by
-/// host, not by text. LAT1b (2026-11-22, offline replay of 151 saved drafts
-/// with the request pinned to one host, judged by Claude): Together p50
+/// host, not by text. `LAT1b` (2026-11-22, offline replay of 151 saved drafts
+/// with the request pinned to one host, judged by Claude): `Together` p50
 /// 0.66 s, 7.3% over 1.5 s, ZER 86.1 (83.4 with the deadline); `CoreWeave`
 /// 0.74 s, 7.3%, 86.1 (82.8); `InferenceNet` 0.69 s, 4.6%, 82.1 (80.8), so
 /// it goes last for its lower quality. Fireworks was over 1.5 s half the
