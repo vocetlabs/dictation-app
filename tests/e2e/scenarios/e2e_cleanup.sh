@@ -5,7 +5,7 @@
 # lands in TextEdit is the rewrite, not the transcript, and the app logged one
 # info line `cleanup outcome=applied duration_ms=<n>` (no text).
 #
-# B: the cleanup reply is held past the 1.5 s deadline. The raw transcript is
+# B: the cleanup reply is held past the 3 s deadline. The raw transcript is
 # pasted at the deadline (polled, with no wall-clock bound; the app's own
 # logged duration is bounded), with the held request still open at the
 # provider or hung up by the app; the line says
@@ -13,10 +13,13 @@
 # is cleaned: no wait is left over from the cancelled one.
 
 CLEANED_TEXT="Hello, world."
-# The deadline is 1.5 s; this is generous for the dictation around it.
+# The deadline is 3 s (LAT2); the bound adds room for the request and the log.
 # The VM's dictation (record, transcribe, settle) takes 6-7 s under load, so the
 # bound is on the app's own logged duration, not on wall time.
-CLEANUP_PASTE_BOUND_MS=2500
+CLEANUP_PASTE_BOUND_MS=4500
+# The deadline is 3 s, so the fallback is logged no sooner than about 3 s
+# (the old 1.5 s would fail this).
+CLEANUP_PASTE_MIN_MS=2900
 
 # cleanup_reply <base64 of UTF-8 text>: what the cleanup answers with.
 cleanup_reply() {
@@ -102,6 +105,8 @@ e2e_cleanup_deadline() {
   expect "the cleanup gave up at the deadline" wait_for_log ' cleanup outcome="?fallback_timeout' 30
   expect "the cleanup gave up at the deadline (app-side, not wall clock)" \
     test "$(cleanup_first_ms)" -le "$CLEANUP_PASTE_BOUND_MS"
+  expect "and not before the 3 s deadline (LAT2)" \
+    test "$(cleanup_first_ms)" -ge "$CLEANUP_PASTE_MIN_MS"
   expect "the outcome is the timeout" test "$(cleanup_outcomes)" = fallback_timeout
 
   # The cancelled cleanup leaves nothing behind.

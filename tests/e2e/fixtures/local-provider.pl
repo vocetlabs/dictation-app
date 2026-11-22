@@ -24,7 +24,7 @@
 #                      request has been read whole ("the gate"); removing it
 #                      releases every held reply.
 #   cleanup-gate       like `gate`, for the cleanup (chat) reply only: it is
-#                      held while this file exists, so the app's 1.5 s
+#                      held while this file exists, so the app's 3 s
 #                      deadline passes and it pastes the raw transcript.
 #   cleanup-text       what the cleanup answers instead of echoing its input
 #                      (UTF-8, as is); read when the request arrives.
