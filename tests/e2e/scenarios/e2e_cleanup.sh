@@ -17,6 +17,9 @@ CLEANED_TEXT="Hello, world."
 # The VM's dictation (record, transcribe, settle) takes 6-7 s under load, so the
 # bound is on the app's own logged duration, not on wall time.
 CLEANUP_PASTE_BOUND_MS=4500
+# The deadline is 3 s, so the fallback is logged no sooner than about 3 s
+# (the old 1.5 s would fail this).
+CLEANUP_PASTE_MIN_MS=2900
 
 # cleanup_reply <base64 of UTF-8 text>: what the cleanup answers with.
 cleanup_reply() {
@@ -102,6 +105,8 @@ e2e_cleanup_deadline() {
   expect "the cleanup gave up at the deadline" wait_for_log ' cleanup outcome="?fallback_timeout' 30
   expect "the cleanup gave up at the deadline (app-side, not wall clock)" \
     test "$(cleanup_first_ms)" -le "$CLEANUP_PASTE_BOUND_MS"
+  expect "and not before the 3 s deadline (LAT2)" \
+    test "$(cleanup_first_ms)" -ge "$CLEANUP_PASTE_MIN_MS"
   expect "the outcome is the timeout" test "$(cleanup_outcomes)" = fallback_timeout
 
   # The cancelled cleanup leaves nothing behind.

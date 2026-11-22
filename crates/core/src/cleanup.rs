@@ -581,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn judgements_have_names_and_the_timeout_is_a_second_and_a_half() {
+    fn judgements_have_names_and_the_timeout_is_three_seconds() {
         assert_eq!(Judgement::DroppedNumber.name(), "dropped_number");
         assert_eq!(Judgement::Accepted.name(), "accepted");
         assert_eq!(TIMEOUT, Duration::from_millis(3_000));
