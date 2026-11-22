@@ -156,7 +156,7 @@ the helper also can't take the app down.
   cleaner uses it while the helper runs, else the cloud engine's. Q2's
   cleanup step does the rest for both: the guard (here against prompt v3),
   the finished-reply check, and the deadline, which is the cleaner's own
-  `local_cleanup::TIMEOUT` (12 s, LAT3): a
+  `cleanup::TIMEOUT` (3 s, the same as the cloud's, LAT4): a
   late request is dropped, which closes its connection and stops the
   generation, and the raw transcript is pasted.
 

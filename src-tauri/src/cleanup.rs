@@ -14,7 +14,7 @@
 //!
 //! Stopping is dropping the last handle (`LlamaServer`'s `Drop` closes its
 //! supervisor's pipe). A cleanup in flight holds a handle until it ends,
-//! which [`local_cleanup::TIMEOUT`](dictation_core::local_cleanup::TIMEOUT)
+//! which [`cleanup::TIMEOUT`](dictation_core::cleanup::TIMEOUT)
 //! bounds. Quitting needs nothing here: the supervisor kills the helper when
 //! the app's process ends, however it ends.
 
