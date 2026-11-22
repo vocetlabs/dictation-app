@@ -94,6 +94,14 @@ fn transition(state: State, event: Event) -> (State, Vec<Command>) {
                 permission,
             ))],
         ),
+        // The limit had passed by the time of the release: whichever of the
+        // two the pipeline handles first, the limit came first (#364 review
+        // r2), and after a resync it drops the recording.
+        (State::RecordingAfterResync { started_at }, Event::HotkeyReleased(now))
+            if now.saturating_sub(started_at) >= MAX_RECORDING =>
+        {
+            (State::Idle, vec![Command::DiscardRecording])
+        }
         (
             State::Recording { started_at } | State::RecordingAfterResync { started_at },
             Event::HotkeyReleased(now),
@@ -214,14 +222,18 @@ pub fn recording_end(state: State, event: &Event) -> Option<RecordingEnd> {
     if next.phase() == Phase::Recording {
         return None;
     }
+    let after_resync = matches!(state, State::RecordingAfterResync { .. });
     Some(match event {
+        Event::HotkeyReleased(now)
+            if after_resync && now.saturating_sub(started_at) >= MAX_RECORDING =>
+        {
+            RecordingEnd::MaxDurationAfterResync
+        }
         Event::HotkeyReleased(now) if now.saturating_sub(started_at) < MIN_HOLD => {
             RecordingEnd::TooShort
         }
         Event::HotkeyReleased(_) => RecordingEnd::Released,
-        Event::Tick(_) if matches!(state, State::RecordingAfterResync { .. }) => {
-            RecordingEnd::MaxDurationAfterResync
-        }
+        Event::Tick(_) if after_resync => RecordingEnd::MaxDurationAfterResync,
         Event::Tick(_) => RecordingEnd::MaxDuration,
         Event::CancelPressed => RecordingEnd::Cancelled,
         Event::HotkeyInterrupted => RecordingEnd::HotkeyInterrupted,
@@ -717,6 +729,38 @@ mod tests {
                 Command::StateChanged(Phase::Idle)
             ]
         );
+    }
+
+    /// Review r2: a release stamped at or after the limit, handled before
+    /// the limit's Tick (queued keys go first), still drops the recording;
+    /// one just before the limit transcribes.
+    #[test]
+    fn fix364_a_release_at_or_after_the_limit_after_a_resync_discards() {
+        let (resynced, _) = step(recording_since(1_000), Event::HotkeyResynced);
+        let limit = ms(1_000) + MAX_RECORDING;
+        for at in [limit, limit + ms(1)] {
+            let release = Event::HotkeyReleased(at);
+            assert_eq!(
+                recording_end(resynced, &release),
+                Some(RecordingEnd::MaxDurationAfterResync)
+            );
+            let (state, commands) = step(resynced, release);
+            assert_eq!(state, State::Idle);
+            assert_eq!(
+                commands,
+                [
+                    Command::DiscardRecording,
+                    Command::StateChanged(Phase::Idle)
+                ]
+            );
+        }
+        let (state, commands) = step(resynced, Event::HotkeyReleased(limit.saturating_sub(ms(1))));
+        assert_eq!(state, State::Transcribing);
+        assert!(commands.contains(&Command::Transcribe), "{commands:?}");
+        // Without a resync, the same late release transcribes, as the
+        // limit itself does.
+        let (state, _) = step(recording_since(1_000), Event::HotkeyReleased(limit));
+        assert_eq!(state, State::Transcribing);
     }
 
     #[test]
