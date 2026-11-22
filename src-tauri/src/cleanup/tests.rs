@@ -302,6 +302,7 @@ async fn dictate_with(keeper: &LocalCleanup<FakeServer>) -> (Vec<CleanupOutcome>
             NoCleanup,
             Some(keeper.clone()),
         ))),
+        ..Extras::default()
     };
     let (pipeline, mut ui) = Pipeline::spawn_with(ports, extras, Config::default()).unwrap();
     assert!(hotkey.emit(HotkeyEvent::Pressed));
