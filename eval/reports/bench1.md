@@ -27,10 +27,14 @@ fixes self-corrections does); WER against the spoken text rewards a verbatim tra
 output (Vocet's one `late` clip, text after the 60 s deadline) counts every reference word, and in AMEND
 every intended character, as an error.
 
-**Vocet's row on a runner.** Its on-device cleanup (Gemma 4 E2B) has a 4 s budget per dictation; on a 3-core
-virtual runner it likely timed out on most clips, so Vocet pasted the raw OrukQwen text (best spoken WER,
-worst intended WER). The rerun below counts the cleanup outcomes from Vocet's own log (numbers only):
-_pending_. Key-up to text on the runner was 12-56 s per clip; it is not a speed measurement.
+**Vocet's row on a runner ran almost without cleanup.** Its on-device cleanup (Gemma 4 E2B) has a 4 s
+budget per dictation. A rerun that counted the cleanup outcomes in Vocet's own log (numbers only; run
+[44970638445](https://github.com/vocetlabs/dictation-bench/actions/runs/44970638445)) found 2 applied and
+148 `fallback_timeout` out of the 150 dictations with text: on a 3-core virtual runner Vocet pasted the raw
+OrukQwen text almost every time, which fits its best spoken and worst intended WER. That rerun scored 149 ok,
+1 empty, 1 late: WER intended 15.91, spoken 11.96, ZER 60.3, AMEND 7.18 (two clips with no output instead of
+one). Vocet's runner numbers are therefore not Vocet as a Mac with a faster GPU runs it; the REL2 runs on this
+Mac measure that. Key-up to text on the runner was 12-56 s per clip; it is not a speed measurement.
 
 **Speed** (end of speech to final text, p50/p95, failure rate) needs a quiet real Mac and is not measured yet.
 
@@ -50,7 +54,7 @@ _pending_. Key-up to text on the runner was 12-56 s per clip; it is not a speed 
 Not done. A check that drove Vocet's debug-only `--debug-audio-file` shortcut through the bench's loop and
 compared it with a black-box run (full paired coverage, intended-WER difference within 1.5 points, fixed
 beforehand) was written, but it was dropped from this branch when the bench moved to its own repository: it
-needs the bench checked out and couldn't be tested by this repository's gate. Follow-up issue below.
+needs the bench checked out and couldn't be tested by this repository's gate. Follow-up: #360.
 
 ## Runs in this repo
 
@@ -60,3 +64,11 @@ the Lume VM `dictation-vm-bench` (a clone of
 load at the start and end of each run. In that VM, granting Accessibility to a third-party app needs the VM
 user's password at macOS's sheet, which takes a person at the VM's display (keys sent over VNC don't reach
 it); Vocet is covered by the golden image's grants.
+
+## Follow-ups
+
+- #360: AC 2, the Vocet black-box vs shortcut check.
+- #361: Vocet's local cleanup times out on slower hardware (148 of 150 on a runner).
+- vocetlabs/dictation-bench#1, #2: unattended setup for VoiceInk and OpenWhispr.
+- Speed: the REL2 release-gate runs (Vocet cloud and local, timed, in `dictation-vm-bench` on the owner's Mac)
+  are being set up with `eval/bench1_vm.sh` and `eval/bench1_judge_local.sh`.
