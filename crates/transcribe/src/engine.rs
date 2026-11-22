@@ -86,17 +86,17 @@ impl Engine {
         let mut config = Config::openrouter();
         let base_url = base_url.unwrap_or(BASE_URL);
         base_url.clone_into(&mut config.base_url);
-        let cleanup = match OpenRouterCleanup::at(base_url, key.clone()) {
-            Ok(cleanup) => Some(cleanup),
-            Err(error) => {
-                tracing::warn!(%error, "cleanup is unavailable; pasting raw transcripts");
-                None
-            }
+        let client = match crate::http::client(base_url) {
+            Ok(client) => client,
+            Err(error) => return Self::Unavailable(error),
         };
-        match OpenRouter::new(config, key) {
-            Ok(speech) => Self::Remote(Box::new(Remote { speech, cleanup })),
-            Err(error) => Self::Unavailable(error),
-        }
+        let cleanup = Some(OpenRouterCleanup::with_client(
+            client.clone(),
+            base_url,
+            key.clone(),
+        ));
+        let speech = OpenRouter::with_client(config, key, client);
+        Self::Remote(Box::new(Remote { speech, cleanup }))
     }
 
     /// Whether the engine is unavailable because the keychain read failed or
@@ -136,9 +136,23 @@ impl Transcriber for Engine {
 
 impl Cleaner for Engine {
     async fn clean(&self, text: &str) -> Result<String, CleanupError> {
+        self.clean_with_host(text).await.map(|(reply, _)| reply)
+    }
+
+    async fn warm_up(&self) {
+        if let Self::Remote(engine) = self {
+            // The speech and cleanup engines share one client, so this
+            // connection serves both.
+            if let Some(cleanup) = &engine.cleanup {
+                cleanup.warm_up().await;
+            }
+        }
+    }
+
+    async fn clean_with_host(&self, text: &str) -> Result<(String, Option<String>), CleanupError> {
         match self {
             Self::Remote(engine) => match &engine.cleanup {
-                Some(cleanup) => cleanup.clean(text).await,
+                Some(cleanup) => cleanup.clean_with_host(text).await,
                 None => Err(CleanupError::Network),
             },
             // No key, or the keychain refused: the cloud engine is what
@@ -297,6 +311,16 @@ impl Cleaner for Transcribers {
         // await.
         let engine = self.snapshot();
         engine.clean(text).await
+    }
+
+    async fn clean_with_host(&self, text: &str) -> Result<(String, Option<String>), CleanupError> {
+        let engine = self.snapshot();
+        engine.clean_with_host(text).await
+    }
+
+    async fn warm_up(&self) {
+        let engine = self.snapshot();
+        engine.warm_up().await;
     }
 }
 
