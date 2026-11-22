@@ -169,10 +169,27 @@ impl HotkeyMatcher {
         self.settle(held, false)
     }
 
-    /// Releases the hotkey if `held` (and the key) no longer make it up, or
-    /// presses it if this event `completes` it and `held` is exactly it.
-    fn settle(&mut self, held: Held, completes: bool) -> Option<HotkeyEvent> {
-        let key_ok = self.spec.key().is_none() || self.key_held;
+    /// What a resync means: the source may have missed events, and `held`
+    /// are the modifiers really down now.
+    ///
+    /// A hold of a modifier-only spec whose modifiers `held` still shows
+    /// down goes on: no release was missed, the person is still holding the
+    /// key (#364: a tap the system disabled for a moment cancelled a held
+    /// recording). Anything else may have lost a press or release, so the
+    /// matcher forgets every key and reports
+    /// [`HotkeyEvent::Interrupted`]. A spec with a key can't tell whether
+    /// the key came up while events were missed, so it is interrupted too.
+    pub fn on_resync(&mut self, held: Held) -> Option<HotkeyEvent> {
+        if self.active && self.spec.key().is_none() && self.check(held).0 {
+            return None;
+        }
+        self.reset();
+        Some(HotkeyEvent::Interrupted)
+    }
+
+    /// Whether `held` has every modifier the spec needs (`.0`), and no
+    /// modifier it doesn't (`.1`).
+    fn check(&self, held: Held) -> (bool, bool) {
         let mut required = true;
         let mut exact = true;
         for modifier in Modifier::ALL {
@@ -181,6 +198,14 @@ impl HotkeyMatcher {
                 None => exact &= !held.any(modifier),
             }
         }
+        (required, exact)
+    }
+
+    /// Releases the hotkey if `held` (and the key) no longer make it up, or
+    /// presses it if this event `completes` it and `held` is exactly it.
+    fn settle(&mut self, held: Held, completes: bool) -> Option<HotkeyEvent> {
+        let key_ok = self.spec.key().is_none() || self.key_held;
+        let (required, exact) = self.check(held);
 
         if self.active {
             if !(required && key_ok) {
@@ -199,7 +224,7 @@ impl HotkeyMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use HotkeyEvent::{CancelPressed, Pressed, Released, ShortcutPressed};
+    use HotkeyEvent::{CancelPressed, Interrupted, Pressed, Released, ShortcutPressed};
 
     const RIGHT_ALT: Held = Held::NONE.with(Modifier::Alt, Hand::Right);
 
@@ -688,5 +713,51 @@ mod tests {
             run("RightAlt", &inputs),
             [Pressed, Released, Pressed, Released, Pressed, Released]
         );
+    }
+
+    /// #364: a resync during a hold whose modifiers are still down (a tap
+    /// the system disabled for a moment) keeps the hold, and its release
+    /// still releases it.
+    #[test]
+    fn a_resync_that_still_shows_the_hotkey_held_keeps_the_hold() {
+        let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
+        assert_eq!(matcher.on_key(modifier(RIGHT_ALT, true)), Some(Pressed));
+        assert_eq!(matcher.on_resync(RIGHT_ALT), None);
+        // Another modifier added while held doesn't matter either.
+        let shift = RIGHT_ALT.with(Modifier::Shift, Hand::Left);
+        assert_eq!(matcher.on_resync(shift), None);
+        assert_eq!(matcher.on_key(modifier(Held::NONE, false)), Some(Released));
+    }
+
+    #[test]
+    fn a_resync_without_the_hotkey_interrupts_and_resets() {
+        let left = Held::NONE.with(Modifier::Alt, Hand::Left);
+        for held in [Held::NONE, left] {
+            let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
+            matcher.on_key(modifier(RIGHT_ALT, true));
+            assert_eq!(matcher.on_resync(held), Some(Interrupted), "{held:?}");
+            // Forgotten: the next hold is a new press.
+            assert_eq!(matcher.on_key(modifier(RIGHT_ALT, true)), Some(Pressed));
+        }
+    }
+
+    #[test]
+    fn a_resync_outside_a_hold_still_reports_interrupted() {
+        let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
+        assert_eq!(matcher.on_resync(RIGHT_ALT), Some(Interrupted));
+        // Held through the resync without a press seen: no hold to keep,
+        // and the key's next press (after a release) works.
+        assert_eq!(matcher.on_key(modifier(Held::NONE, false)), None);
+        assert_eq!(matcher.on_key(modifier(RIGHT_ALT, true)), Some(Pressed));
+    }
+
+    /// A spec with a key can't tell whether the key came up while events
+    /// were missed: a resync interrupts it even with its modifiers held.
+    #[test]
+    fn a_resync_interrupts_a_spec_with_a_key() {
+        let ctrl = Held::NONE.with(Modifier::Ctrl, Hand::Left);
+        let mut matcher = HotkeyMatcher::new("Ctrl+Space".parse().unwrap());
+        assert_eq!(matcher.on_key(key(ctrl, Key::Space, true)), Some(Pressed));
+        assert_eq!(matcher.on_resync(ctrl), Some(Interrupted));
     }
 }

@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use dictation_core::audio_math::{self, Verdict};
 use dictation_core::cleanup::{self as cleanup_rules, Judgement};
-use dictation_core::coordinator::{Phase, State, step};
+use dictation_core::coordinator::{Phase, State, recording_end, step};
 use dictation_core::diagnostics::ErrorCode;
 use dictation_core::error::DictationError;
 use dictation_core::events::{Command, Event};
@@ -993,8 +993,14 @@ where
             self.ui.send(UiEvent::HotkeyRestored);
             return;
         }
+        let recording = matches!(self.state, State::Recording { .. });
         if let Some(event) = self.key_event(key, at) {
             self.feed(event);
+        }
+        // Esc and a shortcut on the hotkey's modifier both cancel: say
+        // which one did (#364).
+        if recording && key != HotkeyEvent::Released && self.state.phase() != Phase::Recording {
+            tracing::info!(hotkey = ?key, "a hotkey event ended the recording");
         }
         if matches!(self.state, State::Recording { .. }) && self.tick_due().await {
             self.feed(Event::Tick(self.clock.now()));
@@ -1195,6 +1201,10 @@ where
     fn feed(&mut self, event: Event) {
         self.pending.push_back(event);
         while let Some(event) = self.pending.pop_front() {
+            // Why a recording ends, at info, so a bench run shows it (#364).
+            if let Some(reason) = recording_end(self.state, &event) {
+                tracing::info!(?reason, "recording ended");
+            }
             let (state, commands) = step(self.state, event.clone());
             tracing::debug!(?event, ?commands, "step");
             self.state = state;

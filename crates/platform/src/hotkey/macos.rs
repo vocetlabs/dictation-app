@@ -77,8 +77,9 @@ type Open = Box<dyn FnMut() -> Result<Box<dyn RawKeys>, HotkeyError> + Send>;
 /// don't.
 ///
 /// If the event tap is paused and resumed, or misses a modifier change, it
-/// sends [`HotkeyEvent::Interrupted`]; if it dies, [`HotkeyEvent::Failed`],
-/// after which `start` works again.
+/// sends [`HotkeyEvent::Interrupted`], unless a modifier-only hotkey is
+/// still held then ([`HotkeyMatcher::on_resync`], #364); if it dies,
+/// [`HotkeyEvent::Failed`], after which `start` works again.
 pub struct MacHotkey {
     spec: HotkeySpec,
     open: Open,
@@ -193,10 +194,16 @@ fn listen(
         }
         match keys.recv_timeout(STOP_POLL) {
             Ok(event) if event.is_resync() => {
-                // Presses or releases may be lost: whatever was held is over.
-                tracing::debug!("the hotkey listener lost track of the keyboard");
-                matcher.reset();
-                sink(HotkeyEvent::Interrupted);
+                // Presses or releases may be lost. A hold whose modifiers
+                // are still down goes on; anything else is over (#364).
+                let out = matcher.on_resync(to_held(event.modifiers));
+                tracing::info!(
+                    hold_kept = out.is_none(),
+                    "the hotkey listener lost track of the keyboard"
+                );
+                if let Some(out) = out {
+                    sink(out);
+                }
             }
             Ok(event) => {
                 if let Some(out) = matched(&mut matcher, &event) {
@@ -739,18 +746,25 @@ mod tests {
         assert_eq!(harness.next(), Released);
     }
 
+    /// #364: the tap was off for a moment while Right Option stayed down
+    /// (the resync still shows it held). The hold goes on, and letting go
+    /// after the tap came back is its release: the recording is
+    /// transcribed, not dropped.
     #[test]
-    fn criterion_2_after_a_resync_a_still_held_key_does_not_release() {
-        let harness = Harness::start();
-        harness.send(&[
+    fn fix364_a_resync_that_still_shows_the_hotkey_held_keeps_the_recording() {
+        let out = outputs(&[
             modifier_event(RIGHT, RIGHT, true),
             KeyEvent::resync(RIGHT),
-            // Let go after the tap came back: the hold already ended.
             modifier_event(none(), RIGHT, false),
         ]);
-        assert_eq!(harness.next(), Pressed);
-        assert_eq!(harness.next(), Interrupted);
-        harness.assert_quiet();
+        assert_eq!(out, [Pressed, Released]);
+        let commands = coordinate(&out);
+        assert!(commands.contains(&Command::StopRecording), "{commands:?}");
+        assert!(commands.contains(&Command::Transcribe), "{commands:?}");
+        assert!(
+            !commands.contains(&Command::DiscardRecording),
+            "{commands:?}"
+        );
     }
 
     /// What the coordinator does with what the adapter sent, from Idle, one

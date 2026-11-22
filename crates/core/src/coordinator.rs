@@ -152,6 +152,50 @@ fn transition(state: State, event: Event) -> (State, Vec<Command>) {
     }
 }
 
+/// Why a recording ended, for the log (#364). Carries no text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordingEnd {
+    /// The hotkey came up: the recording goes to the transcriber.
+    Released,
+    /// The hotkey came up sooner than [`MIN_HOLD`]: a tap, dropped.
+    TooShort,
+    /// [`MAX_RECORDING`] passed: the recording goes to the transcriber.
+    MaxDuration,
+    /// Esc, a shortcut on the hotkey's modifier, or lost hotkey events.
+    Cancelled,
+    /// The hotkey source lost track of the keyboard.
+    HotkeyInterrupted,
+    /// The hotkey source stopped listening.
+    HotkeyFailed,
+    /// A permission went missing.
+    PermissionMissing,
+}
+
+/// Why `event` ends the recording `state` is in, or `None` if `state`
+/// isn't [`State::Recording`] or the recording goes on.
+#[must_use]
+pub fn recording_end(state: State, event: &Event) -> Option<RecordingEnd> {
+    let State::Recording { started_at } = state else {
+        return None;
+    };
+    let (next, _) = transition(state, event.clone());
+    if matches!(next, State::Recording { .. }) {
+        return None;
+    }
+    Some(match event {
+        Event::HotkeyReleased(now) if now.saturating_sub(started_at) < MIN_HOLD => {
+            RecordingEnd::TooShort
+        }
+        Event::HotkeyReleased(_) => RecordingEnd::Released,
+        Event::Tick(_) => RecordingEnd::MaxDuration,
+        Event::CancelPressed => RecordingEnd::Cancelled,
+        Event::HotkeyInterrupted => RecordingEnd::HotkeyInterrupted,
+        Event::HotkeyFailed => RecordingEnd::HotkeyFailed,
+        // The only other event that leaves Recording.
+        _ => RecordingEnd::PermissionMissing,
+    })
+}
+
 fn stop_and_transcribe() -> (State, Vec<Command>) {
     (
         State::Transcribing,
@@ -552,6 +596,51 @@ mod tests {
     #[test]
     fn default_state_is_idle() {
         assert_eq!(State::default(), State::Idle);
+    }
+
+    #[test]
+    fn fix364_every_way_a_recording_ends_has_a_reason() {
+        let recording = recording_since(1_000);
+        let cases = [
+            (Event::HotkeyReleased(ms(1_100)), RecordingEnd::TooShort),
+            (Event::HotkeyReleased(ms(2_000)), RecordingEnd::Released),
+            (
+                Event::Tick(ms(1_000) + MAX_RECORDING),
+                RecordingEnd::MaxDuration,
+            ),
+            (Event::CancelPressed, RecordingEnd::Cancelled),
+            (Event::HotkeyInterrupted, RecordingEnd::HotkeyInterrupted),
+            (Event::HotkeyFailed, RecordingEnd::HotkeyFailed),
+            (
+                Event::PermissionMissing(Permission::Microphone),
+                RecordingEnd::PermissionMissing,
+            ),
+        ];
+        for (event, reason) in cases {
+            assert_eq!(recording_end(recording, &event), Some(reason), "{event:?}");
+            let (next, _) = step(recording, event);
+            assert_ne!(next.phase(), Phase::Recording);
+        }
+    }
+
+    #[test]
+    fn fix364_no_reason_while_the_recording_goes_on_or_outside_one() {
+        let recording = recording_since(1_000);
+        for event in [
+            Event::Tick(ms(2_000)),
+            Event::HotkeyPressed(ms(2_000)),
+            Event::AudioCaptured,
+            Event::InsertDone,
+        ] {
+            assert_eq!(recording_end(recording, &event), None, "{event:?}");
+        }
+        for state in [State::Idle, State::Transcribing, State::Inserting] {
+            assert_eq!(recording_end(state, &Event::CancelPressed), None);
+            assert_eq!(
+                recording_end(state, &Event::HotkeyReleased(ms(9_000))),
+                None
+            );
+        }
     }
 }
 
