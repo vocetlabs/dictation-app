@@ -71,6 +71,12 @@ e2e_cleanup_applied() {
   expect "the cleanup was applied" test "$(cleanup_outcomes)" = applied
   expect "its log line has a duration" wait_for_log ' cleanup outcome="?applied"? duration_ms=[0-9]+' 1
   expect "the log has no text" test "$(app_log | grep -c 'Hello, world')" = 0
+  expect "the cleanup line names the provider's host (LAT1)" \
+    wait_for_log ' cleanup outcome="?applied"? .*provider="?FakeHost"?' 1
+  expect "a keyless HEAD arrived at key-down (LAT1)" \
+    provider_wait_event '^warm auth=none$' 30
+  expect "no HEAD carried a key (LAT1)" \
+    test "$(provider_events | grep '^warm ' | grep -vc 'auth=none')" = 0
 
   [ "$SCENARIO_FAILED" = 0 ] || dump_ui e2e_cleanup_applied
   collect_log e2e_cleanup_applied

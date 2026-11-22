@@ -63,6 +63,26 @@ pub trait Cleaner: Send + Sync {
     /// [`CleanupError::Off`] when cleanup isn't configured.
     fn clean(&self, text: &str) -> impl Future<Output = Result<String, CleanupError>> + Send;
 
+    /// As [`clean`](Self::clean), with the name of the host that served the
+    /// request when the provider says so (logged, never a text).
+    ///
+    /// # Errors
+    ///
+    /// As [`clean`](Self::clean).
+    fn clean_with_host(
+        &self,
+        text: &str,
+    ) -> impl Future<Output = Result<(String, Option<String>), CleanupError>> + Send {
+        async move { self.clean(text).await.map(|reply| (reply, None)) }
+    }
+
+    /// Opens the connection to the provider ahead of a `clean` call, when the
+    /// dictation key goes down. Best effort: sends no audio or text and
+    /// ignores failure.
+    fn warm_up(&self) -> impl Future<Output = ()> + Send {
+        async {}
+    }
+
     /// How long this cleaner may take; `None` for the pipeline's default
     /// (`dictation_core::cleanup::TIMEOUT`). The on-device cleaner (Q4)
     /// needs longer on slower Macs.
