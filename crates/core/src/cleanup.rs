@@ -33,8 +33,12 @@ pub const OPEN_TAG: &str = "<transcript>";
 pub const CLOSE_TAG: &str = "</transcript>";
 
 /// How long a cleanup may take, from the transcript to the reply, before
-/// the raw transcript is pasted and the request cancelled.
-pub const TIMEOUT: Duration = Duration::from_millis(1_500);
+/// the raw transcript is pasted and the request cancelled. 3 s (LAT2,
+/// owner decision 2026-11-22: score first): an offline replay of 151 saved
+/// drafts pinned to Together scored ZER 86.1 with no deadline against 83.4 at
+/// 1.5 s, and its replies had p50 0.66 s, p90 1.35 s, max 2.66 s, so 3 s
+/// keeps nearly every cleanup and typical latency barely moves.
+pub const TIMEOUT: Duration = Duration::from_millis(3_000);
 
 /// A reply longer than this many times the transcript (plus
 /// [`LENGTH_SLACK`] characters) is not a cleanup.
@@ -577,10 +581,10 @@ mod tests {
     }
 
     #[test]
-    fn judgements_have_names_and_the_timeout_is_a_second_and_a_half() {
+    fn judgements_have_names_and_the_timeout_is_three_seconds() {
         assert_eq!(Judgement::DroppedNumber.name(), "dropped_number");
         assert_eq!(Judgement::Accepted.name(), "accepted");
-        assert_eq!(TIMEOUT, Duration::from_millis(1_500));
+        assert_eq!(TIMEOUT, Duration::from_millis(3_000));
         assert_eq!(PROMPT_NAME, "v4");
     }
 }
