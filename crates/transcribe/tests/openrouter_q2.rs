@@ -103,7 +103,7 @@ async fn cleanup_sends_zdr_low_reasoning_and_the_prompt() {
         serde_json::json!({
             "zdr": true,
             "data_collection": "deny",
-            "order": ["inference-net", "together", "coreweave"],
+            "order": ["together", "coreweave", "inference-net"],
             "allow_fallbacks": true,
         })
     );
