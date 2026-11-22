@@ -19,7 +19,7 @@
 use std::time::Duration;
 
 use dictation_core::cleanup;
-use dictation_core::cloud_models::{CLEANUP_MODEL, PrivacyFilter};
+use dictation_core::cloud_models::{CLEANUP_MODEL, CLEANUP_PROVIDER_ORDER, PrivacyFilter};
 use dictation_ports::{Cleaner, CleanupError, Secret};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
@@ -57,13 +57,19 @@ impl OpenRouterCleanup {
     /// [`CleanupError::Network`] if the HTTP client can't be built.
     pub fn at(base_url: &str, key: Secret) -> Result<Self, CleanupError> {
         let client = crate::http::client(base_url).map_err(|_| CleanupError::Network)?;
-        Ok(Self {
+        Ok(Self::with_client(client, base_url, key))
+    }
+
+    /// As [`at`](Self::at), on a client the speech engine shares, so one
+    /// warm connection serves both.
+    pub(crate) fn with_client(client: Client, base_url: &str, key: Secret) -> Self {
+        Self {
             client,
             endpoint: format!("{}/chat/completions", base_url.trim_end_matches('/')),
             model: CLEANUP_MODEL,
             key,
             timeout: cleanup::TIMEOUT,
-        })
+        }
     }
 
     /// Uses `timeout` for the request instead of the cleanup deadline.
@@ -79,7 +85,7 @@ impl OpenRouterCleanup {
         self.model
     }
 
-    async fn request(&self, text: &str) -> Result<String, CleanupError> {
+    async fn request(&self, text: &str) -> Result<(String, Option<String>), CleanupError> {
         // The error never echoes the key.
         let headers = headers(&self.key).map_err(|_| CleanupError::InvalidKey)?;
         let response = self
@@ -103,9 +109,13 @@ impl OpenRouterCleanup {
 
 impl Cleaner for OpenRouterCleanup {
     async fn clean(&self, text: &str) -> Result<String, CleanupError> {
+        self.clean_with_host(text).await.map(|(reply, _)| reply)
+    }
+
+    async fn clean_with_host(&self, text: &str) -> Result<(String, Option<String>), CleanupError> {
         let result = self.request(text).await;
         match &result {
-            Ok(reply) => tracing::debug!(
+            Ok((reply, _)) => tracing::debug!(
                 model = self.model,
                 chars = text.chars().count(),
                 reply_chars = reply.chars().count(),
@@ -114,6 +124,10 @@ impl Cleaner for OpenRouterCleanup {
             Err(error) => tracing::debug!(model = self.model, %error, "cleanup failed"),
         }
         result
+    }
+
+    async fn warm_up(&self) {
+        crate::http::warm_up(&self.client, &self.endpoint).await;
     }
 }
 
@@ -130,6 +144,9 @@ impl std::fmt::Debug for OpenRouterCleanup {
 
 /// The chat request for `text`.
 fn request_body(model: &str, text: &str) -> serde_json::Value {
+    let mut provider = provider_filter(PrivacyFilter::ZeroDataRetention);
+    provider["order"] = serde_json::json!(CLEANUP_PROVIDER_ORDER);
+    provider["allow_fallbacks"] = serde_json::json!(true);
     serde_json::json!({
         "model": model,
         "temperature": 0,
@@ -138,7 +155,7 @@ fn request_body(model: &str, text: &str) -> serde_json::Value {
             { "role": "system", "content": cleanup::prompt() },
             { "role": "user", "content": cleanup::user_message(text) },
         ],
-        "provider": provider_filter(PrivacyFilter::ZeroDataRetention),
+        "provider": provider,
         "reasoning": { "effort": "low", "exclude": true },
     })
 }
@@ -164,6 +181,9 @@ fn from_reqwest(error: &reqwest::Error) -> CleanupError {
 #[derive(Deserialize)]
 struct ChatReply {
     choices: Vec<Choice>,
+    /// The host that served the request, as `OpenRouter` names it.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -185,14 +205,14 @@ struct Message {
 /// isn't a finished chat reply with text. A reply cut off by the token limit
 /// or a filter (any `finish_reason` but `stop`, or none) could be a clean
 /// prefix the guard accepts, so it counts as no reply: the raw text is pasted.
-pub(crate) fn parse_reply(body: &[u8]) -> Option<String> {
+pub(crate) fn parse_reply(body: &[u8]) -> Option<(String, Option<String>)> {
     let reply: ChatReply = serde_json::from_slice(body).ok()?;
     let choice = reply.choices.into_iter().next()?;
     if choice.finish_reason.as_deref() != Some("stop") {
         return None;
     }
     let content = choice.message.content?;
-    Some(cleanup::strip_tags(&content).to_owned())
+    Some((cleanup::strip_tags(&content).to_owned(), reply.provider))
 }
 
 #[cfg(test)]
@@ -214,7 +234,12 @@ mod tests {
         );
         assert_eq!(
             body["provider"],
-            serde_json::json!({"zdr": true, "data_collection": "deny"})
+            serde_json::json!({
+                "zdr": true,
+                "data_collection": "deny",
+                "order": ["inference-net", "together", "coreweave"],
+                "allow_fallbacks": true,
+            })
         );
         assert_eq!(
             body["reasoning"],
@@ -241,13 +266,25 @@ mod tests {
     #[test]
     fn replies_are_read_without_the_tags() {
         let body = br#"{"choices":[{"message":{"role":"assistant","content":" <transcript>\nHi there.\n</transcript> "},"finish_reason":"stop"}]}"#;
-        assert_eq!(parse_reply(body).as_deref(), Some("Hi there."));
+        assert_eq!(parse_reply(body), Some(("Hi there.".to_owned(), None)));
         assert_eq!(parse_reply(br#"{"choices":[]}"#), None);
         assert_eq!(parse_reply(b"nope"), None);
         assert_eq!(
             parse_reply(br#"{"choices":[{"message":{"content":null},"finish_reason":"stop"}]}"#),
             None
         );
+    }
+
+    /// LAT1: the host's name comes from the reply's top-level `provider`.
+    #[test]
+    fn the_reply_names_its_host_when_it_has_one() {
+        let named = br#"{"provider":"InferenceNet","choices":[{"message":{"content":"Hi."},"finish_reason":"stop"}]}"#;
+        assert_eq!(
+            parse_reply(named),
+            Some(("Hi.".to_owned(), Some("InferenceNet".to_owned())))
+        );
+        let unnamed = br#"{"choices":[{"message":{"content":"Hi."},"finish_reason":"stop"}]}"#;
+        assert_eq!(parse_reply(unnamed), Some(("Hi.".to_owned(), None)));
     }
 
     /// Review Q2 round 1: a cut-off reply is never pasted.

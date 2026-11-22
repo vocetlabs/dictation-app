@@ -54,6 +54,10 @@ pub struct FakeCleaner {
     pub scripts: Arc<Mutex<VecDeque<Script>>>,
     pub seen: Arc<Mutex<Vec<String>>>,
     pub dropped: Arc<AtomicUsize>,
+    /// Warm-ups the pipeline asked for (LAT1).
+    pub warmed: Arc<AtomicUsize>,
+    /// The host name replies come from, if any (LAT1).
+    pub host: Arc<Mutex<Option<String>>>,
 }
 
 struct CountDrop(Arc<AtomicUsize>);
@@ -65,6 +69,20 @@ impl Drop for CountDrop {
 }
 
 impl Cleaner for FakeCleaner {
+    fn warm_up(&self) -> impl Future<Output = ()> + Send {
+        self.warmed.fetch_add(1, Ordering::SeqCst);
+        async {}
+    }
+
+    fn clean_with_host(
+        &self,
+        text: &str,
+    ) -> impl Future<Output = Result<(String, Option<String>), CleanupError>> + Send {
+        let reply = self.clean(text);
+        let host = self.host.lock().unwrap().clone();
+        async move { reply.await.map(|reply| (reply, host)) }
+    }
+
     fn clean(&self, text: &str) -> impl Future<Output = Result<String, CleanupError>> + Send {
         self.seen.lock().unwrap().push(text.to_owned());
         let script = self.scripts.lock().unwrap().pop_front();
