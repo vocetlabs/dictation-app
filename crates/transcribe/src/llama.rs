@@ -148,7 +148,7 @@ impl<R: ChatRunner> ChatRunner for Arc<R> {
 
 /// The on-device [`Cleaner`] (Q4): Gemma with prompt v3, through a
 /// [`ChatRunner`]. The pipeline's cleanup step adds the rest, as for the
-/// cloud cleaner: the deadline ([`local_cleanup::TIMEOUT`], from
+/// cloud cleaner: the deadline ([`cleanup::TIMEOUT`], from
 /// [`Cleaner::deadline`]), the guard (which checks the reply doesn't echo
 /// prompt v3) and the raw-text fallback.
 #[derive(Debug, Clone)]
@@ -185,7 +185,7 @@ impl<R: ChatRunner> Cleaner for LocalCleaner<R> {
     }
 
     fn deadline(&self) -> Option<Duration> {
-        Some(local_cleanup::TIMEOUT)
+        Some(cleanup::TIMEOUT)
     }
 
     fn prompt(&self) -> Option<&'static str> {

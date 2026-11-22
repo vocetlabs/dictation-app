@@ -48,8 +48,10 @@ async fn criterion_2_the_port_cleaner_sends_prompt_v3_and_returns_the_reply() {
     assert_eq!(system, local_cleanup::SYSTEM_PROMPT);
     assert_eq!(user, &cleanup::user_message(raw));
     assert_eq!(*max_tokens, local_cleanup::max_tokens(raw));
-    // The pipeline's deadline and guard use these for this cleaner.
-    assert_eq!(cleaner.deadline(), Some(local_cleanup::TIMEOUT));
+    // The pipeline's deadline and guard use these for this cleaner: the one
+    // 3 s deadline the cloud cleaner has too (LAT4).
+    assert_eq!(cleaner.deadline(), Some(std::time::Duration::from_secs(3)));
+    assert_eq!(cleaner.deadline(), Some(cleanup::TIMEOUT));
     assert_eq!(cleaner.prompt(), Some(local_cleanup::SYSTEM_PROMPT));
 }
 

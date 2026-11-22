@@ -7,8 +7,6 @@
 //! `dictation-transcribe` (`llama`). Prompt v1, on which v3 builds, is
 //! adapted from Blurt's cleanup instruction (MIT, credited in `NOTICE`).
 
-use std::time::Duration;
-
 /// The system prompt: `prompts.py`'s `PROMPTS["v3"][0]`, byte for byte.
 pub const SYSTEM_PROMPT: &str = include_str!("local_cleanup/prompt_v3.txt");
 
@@ -24,25 +22,6 @@ pub const SEED: u32 = 1;
 /// The context window, in tokens (`-c 4096`). The prompt's fixed part is
 /// about 870 tokens; the rest is the transcript and the reply.
 pub const CONTEXT_TOKENS: u32 = 4096;
-
-/// How long one on-device cleanup may take before the raw text is pasted
-/// instead (the pipeline's deadline for this cleaner; the cloud one has
-/// `cleanup::TIMEOUT`). The user message is `cleanup::user_message`, the
-/// same as the eval's.
-/// PR #326 measured 0.52 s median, 1.35 s p90 and 4.7 s worst on an M4 Pro;
-/// slower Macs need more.
-///
-/// 12 s (LAT3, owner decision 2026-11-22: optimise the Voice Arena score
-/// now, revisit the user experience later). Voice Arena listens 4 s after a
-/// clip and then waits until the text has been unchanged for 2 s, up to 30
-/// s, and speed is not part of ZER. In the REL2 VM run, Gemma 4 E2B timed
-/// out at the old 4 s budget on 108 of 151 clips, so most drafts were pasted
-/// raw; offline it lifts OrukQwen from about 59 to 72 ZER. This is the
-/// generation deadline: the pipeline applies it, and the helper request has
-/// no whole-request timeout of its own (the shared HTTP client still has a
-/// 10 s connect timeout, which is not generation). The cloud deadline is
-/// `cleanup::TIMEOUT`.
-pub const TIMEOUT: Duration = Duration::from_secs(12);
 
 /// The most tokens the reply may have: half the transcript's length in
 /// characters plus 100, as the eval capped it (`len(raw) // 2 + 100`).
@@ -76,11 +55,6 @@ mod tests {
     }
 
     #[test]
-    fn the_on_device_budget_is_twelve_seconds() {
-        assert_eq!(TIMEOUT, Duration::from_secs(12));
-    }
-
-    #[test]
     fn the_shared_user_turn_is_the_evals() {
         // PR #326 sent `<transcript>\n{raw}\n</transcript>`, as Q2 does.
         assert_eq!(
@@ -102,6 +76,5 @@ mod tests {
     fn the_settings_are_the_evals() {
         assert!(TEMPERATURE.abs() < f32::EPSILON);
         assert_eq!((TOP_K, SEED, CONTEXT_TOKENS), (1, 1, 4096));
-        assert!(TIMEOUT >= Duration::from_secs(3));
     }
 }
