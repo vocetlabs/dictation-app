@@ -55,7 +55,7 @@
 # nor on origin: tags are immutable in this repository (a ruleset blocks
 # moving or deleting them), so a failed publish needs a new version. It then
 # uploads everything with `gh release create v<version> --target <the built
-# commit>` to gargankit90/dictation-app, which creates the tag on that commit
+# commit>` to vocetlabs/dictation-app, which creates the tag on that commit
 # (the updater's endpoint is releases/latest/download/latest.json there).
 # Without --publish nothing leaves this Mac. No CI publishing, no tokens: gh
 # uses the owner's own login.
@@ -63,7 +63,7 @@ set -euo pipefail
 # Never trace: a traced line would print the key.
 set +x
 
-RELEASES_REPO=gargankit90/dictation-app
+RELEASES_REPO=vocetlabs/dictation-app
 KEY_SERVICE=dictation-app-updater-key
 PASSWORD_SERVICE=dictation-app-updater-password
 # Telemetry (A1, A2): the PostHog project key and the Sentry DSN, also generic

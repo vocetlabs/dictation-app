@@ -2768,7 +2768,7 @@ mod capability_tests {
             .collect();
         assert_eq!(urls.len(), 1, "{urls:?}");
         assert!(
-            urls[0].starts_with("https://github.com/gargankit90/dictation-app/issues/new?"),
+            urls[0].starts_with("https://github.com/vocetlabs/dictation-app/issues/new?"),
             "{}",
             urls[0]
         );

@@ -66,7 +66,7 @@ testers. Thank you for trying it.
   which fail, never audio, text you dictated, keys, app names or file paths.
   Turn it off in Settings, Privacy, "Share usage and error events". Off takes
   effect at once. The full list is in
-  https://github.com/gargankit90/dictation-app/blob/main/docs/privacy.md
+  https://github.com/vocetlabs/dictation-app/blob/main/docs/privacy.md
 
 ### Requirements
 
@@ -79,17 +79,17 @@ testers. Thank you for trying it.
 - Mac only. Windows comes later.
 - Do not press other keys while you hold the dictation key. If you do, the
   recording is dropped without a message
-  (https://github.com/gargankit90/dictation-app/issues/315).
+  (https://github.com/vocetlabs/dictation-app/issues/315).
 - A long dictation on a model on your Mac can take a while, and has no time
-  limit yet (https://github.com/gargankit90/dictation-app/issues/316).
+  limit yet (https://github.com/vocetlabs/dictation-app/issues/316).
 - Recordings stop after 5 minutes.
 - Using speech on your Mac with no network is built in but not yet checked.
 - If the on-device engine crashes, Vocet does not report it, because a crash
   report could contain what you said. If Vocet quits on its own, tell us in a
   bug report
-  (https://github.com/gargankit90/dictation-app/issues/226).
+  (https://github.com/vocetlabs/dictation-app/issues/226).
 - With your own key, your speech goes to Groq or OpenAI. Do not dictate
   anything you would not send to a cloud service.
 
-[Unreleased]: https://github.com/gargankit90/dictation-app/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/gargankit90/dictation-app/releases/tag/v0.1.0
+[Unreleased]: https://github.com/vocetlabs/dictation-app/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/vocetlabs/dictation-app/releases/tag/v0.1.0

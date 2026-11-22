@@ -15,7 +15,7 @@ _Recorded in a macOS VM: a real Right Option hold, speech by macOS `say` fed to 
 ## Try it
 
 1. Download the DMG from the
-   [latest GitHub release](https://github.com/gargankit90/dictation-app/releases/latest).
+   [latest GitHub release](https://github.com/vocetlabs/dictation-app/releases/latest).
 2. Follow the [tester guide](docs/TESTERS.md): install, first run, speech
    (an on-device model or your own key), first dictation, updates and how to
    report a bug.
@@ -73,7 +73,7 @@ cargo install cargo-machete --version 0.9.2 --locked
 cargo install cargo-about --version 0.9.3 --locked --features cli
 
 # 6. Clone and install
-git clone https://github.com/gargankit90/dictation-app.git
+git clone https://github.com/vocetlabs/dictation-app.git
 cd dictation-app
 npm ci
 scripts/install-hooks.sh   # once per clone: git hooks, incl. the push guard

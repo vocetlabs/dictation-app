@@ -210,7 +210,7 @@ pub enum Link {
     Notice,
 }
 
-const REPOSITORY: &str = "https://github.com/gargankit90/dictation-app";
+const REPOSITORY: &str = "https://github.com/vocetlabs/dictation-app";
 
 impl Link {
     /// Where it goes.
