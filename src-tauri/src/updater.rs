@@ -764,7 +764,7 @@ mod tests {
 
     /// The owner's endpoint (R1): this repository's releases.
     const ENDPOINT: &str =
-        "https://github.com/gargankit90/dictation-app/releases/latest/download/latest.json";
+        "https://github.com/vocetlabs/dictation-app/releases/latest/download/latest.json";
 
     /// The owner's minisign public key (M5.4, `docs/history/milestones/M5.4.md`).
     const OWNER_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY2QzgwRjE3M0E5NkQ3OEYKUldTUDE1WTZGdy9JOWpxTlNIUjA4ampTb2pSdkFHdENZVjA4TEtBSkkwVW5zNHFTZkNmSURRWHAK";
@@ -813,60 +813,71 @@ mod tests {
         let endpoints = [url(ENDPOINT)];
         let ok = |text: &str| package_url_problem(&url(text), &endpoints, false).is_none();
         assert!(ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/v0.2.0/dictation-app.app.tar.gz"
+            "https://github.com/vocetlabs/dictation-app/releases/download/v0.2.0/dictation-app.app.tar.gz"
         ));
         // The archived releases-only repository was never used for a release.
+        assert!(!ok(
+            "https://github.com/vocetlabs/dictation-app-releases/releases/download/v0.2.0/a.tar.gz"
+        ));
+        // Other owners, including the former one and the archived releases-only
+        // repository, are refused.
+        assert!(!ok(
+            "https://github.com/someone/dictation-app/releases/download/v0.2.0/a.tar.gz"
+        ));
+        assert!(!ok(
+            "https://github.com/gargankit90/dictation-app/releases/download/v0.2.0/a.tar.gz"
+        ));
         assert!(!ok(
             "https://github.com/gargankit90/dictation-app-releases/releases/download/v0.2.0/a.tar.gz"
         ));
         // Look-alike repositories and hosts.
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app.evil/releases/download/v1/a.tar.gz"
+            "https://github.com/vocetlabs/dictation-app.evil/releases/download/v1/a.tar.gz"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-appx/releases/download/v1/a.tar.gz"
+            "https://github.com/vocetlabs/dictation-appx/releases/download/v1/a.tar.gz"
         ));
         assert!(!ok(
-            "https://github.com.evil.example/gargankit90/dictation-app/releases/download/v1/a"
+            "https://github.com.evil.example/vocetlabs/dictation-app/releases/download/v1/a"
         ));
         assert!(!ok(
-            "https://evil.example/gargankit90/dictation-app/releases/download/v1/a"
+            "https://evil.example/vocetlabs/dictation-app/releases/download/v1/a"
         ));
         assert!(!ok(
             "https://github.com/someone/else/releases/download/v1/a.tar.gz"
         ));
         // Other paths in the right repository.
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/latest/download/a.tar.gz"
+            "https://github.com/vocetlabs/dictation-app/releases/latest/download/a.tar.gz"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/archive/main.tar.gz"
+            "https://github.com/vocetlabs/dictation-app/archive/main.tar.gz"
         ));
         // Path tricks.
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/../../../evil/x/a.tar.gz"
+            "https://github.com/vocetlabs/dictation-app/releases/download/../../../evil/x/a.tar.gz"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/%2e%2e/%2e%2e/evil/a"
+            "https://github.com/vocetlabs/dictation-app/releases/download/%2e%2e/%2e%2e/evil/a"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/v1%2F..%2F..%2Fa"
+            "https://github.com/vocetlabs/dictation-app/releases/download/v1%2F..%2F..%2Fa"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app/releases/download/v1%5Ca"
+            "https://github.com/vocetlabs/dictation-app/releases/download/v1%5Ca"
         ));
         assert!(!ok(
-            "https://github.com/gargankit90/dictation-app%2Freleases/download/v1/a"
+            "https://github.com/vocetlabs/dictation-app%2Freleases/download/v1/a"
         ));
         // Not https, or another port.
-        let http = url("http://github.com/gargankit90/dictation-app/releases/download/v1/a.tar.gz");
+        let http = url("http://github.com/vocetlabs/dictation-app/releases/download/v1/a.tar.gz");
         assert!(
             package_url_problem(&http, &endpoints, false)
                 .unwrap()
                 .contains("secure connection")
         );
         assert!(!ok(
-            "https://github.com:8443/gargankit90/dictation-app/releases/download/v1/a"
+            "https://github.com:8443/vocetlabs/dictation-app/releases/download/v1/a"
         ));
         assert!(
             package_url_problem(&url("https://evil.example/a"), &endpoints, false)
@@ -880,7 +891,7 @@ mod tests {
     fn the_shipped_endpoint_is_this_repos_latest_json() {
         assert_eq!(
             ENDPOINT,
-            "https://github.com/gargankit90/dictation-app/releases/latest/download/latest.json"
+            "https://github.com/vocetlabs/dictation-app/releases/latest/download/latest.json"
         );
     }
 

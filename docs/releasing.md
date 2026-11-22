@@ -20,7 +20,7 @@ The updater trusts one **minisign public key** from `tauri.conf.json`
 (`plugins.updater.pubkey`, the owner's, key id `F6C80F173A96D78F`) and refuses
 any download whose signature doesn't verify against it, or whose signed
 version differs from the announced one (`requireSignedVersion`). It fetches
-`https://github.com/gargankit90/dictation-app/releases/latest/download/latest.json`
+`https://github.com/vocetlabs/dictation-app/releases/latest/download/latest.json`
 (this repository's own releases; the separate `gargankit90/dictation-app-releases`
 is archived and was never used for a release), once at launch
 (quietly: a dialog only when there is an update) and from the tray's
@@ -136,7 +136,7 @@ or written to a file. See `docs/privacy.md` for the project settings to turn on.
 
    It refuses without a clean tree, with a `HEAD` that is not on origin's
    default branch, or when tag `v0.2.0` already exists here or on origin. Then
-   it runs `gh release create v0.2.0 --repo gargankit90/dictation-app
+   it runs `gh release create v0.2.0 --repo vocetlabs/dictation-app
    --target <the commit it built>` with those files (the owner's own `gh`
    login; no new token), which creates the tag on that commit. Installed apps
    find the new `latest.json` at their next launch or Settings → General → **Check now**.

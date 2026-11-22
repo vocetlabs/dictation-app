@@ -16,7 +16,7 @@
 #   - a bundle signed with another key, for another version, or changed after
 #     it was signed, is refused;
 #   - --publish calls `gh release create v<version> --repo
-#     gargankit90/dictation-app --target <HEAD>`;
+#     vocetlabs/dictation-app --target <HEAD>`;
 #   - the certificate comes from scripts/release-signing.conf: `dictation-app
 #     Dev` while it is empty; a Developer ID release is notarised and stapled
 #     (a fake notarytool, stapler and spctl: what real Apple tools do is not
@@ -326,7 +326,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/scripts/check-licences.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/scripts/check-dmg.sh"
 chmod +x "$repo/scripts"/*.sh
 jq -n --arg v "$VERSION" --arg k "$PUBKEY" \
-  '{version: $v, plugins: {updater: {pubkey: $k, endpoints: ["https://github.com/gargankit90/dictation-app/releases/latest/download/latest.json"]}}}' \
+  '{version: $v, plugins: {updater: {pubkey: $k, endpoints: ["https://github.com/vocetlabs/dictation-app/releases/latest/download/latest.json"]}}}' \
   >"$repo/src-tauri/tauri.conf.json"
 jq -n --arg v "$VERSION" '{name: "dictation-app", version: $v}' >"$repo/package.json"
 printf '[workspace.package]\nversion = "%s"\n' "$VERSION" >"$repo/Cargo.toml"
@@ -408,7 +408,7 @@ grep -q 'signature verifies against the public key' "$work/out.txt" || fail "no 
 [ "$(jq -r .version "$out/latest.json")" = "$VERSION" ] || fail "latest.json has the wrong version"
 [ "$(jq -r .notes "$out/latest.json")" = "Test notes." ] || fail "latest.json has the wrong notes"
 [ "$(jq -r '.platforms["darwin-aarch64"].url' "$out/latest.json")" = \
-  "https://github.com/gargankit90/dictation-app/releases/download/v$VERSION/$base.app.tar.gz" ] ||
+  "https://github.com/vocetlabs/dictation-app/releases/download/v$VERSION/$base.app.tar.gz" ] ||
   fail "latest.json's url isn't this repository's"
 [ "$(jq -r '.platforms["darwin-aarch64"].signature' "$out/latest.json")" = "$(cat "$out/$base.app.tar.gz.sig")" ] ||
   fail "latest.json's signature isn't the .sig"
@@ -496,7 +496,7 @@ pass "a bundle signed with another key, for another version or changed after sig
 
 head=$(git -C "$repo" rev-parse HEAD)
 run_release "$VERSION" --publish || fail "--publish failed with a clean, merged tree and a new tag"
-grep -q "^gh release create v$VERSION --repo gargankit90/dictation-app --target $head " "$calls/gh" ||
+grep -q "^gh release create v$VERSION --repo vocetlabs/dictation-app --target $head " "$calls/gh" ||
   fail "gh wasn't asked to create v$VERSION in this repository at $head: $(cat "$calls/gh" 2>/dev/null)"
 ! grep -q 'dictation-app-releases' "$calls/gh" || fail "gh was pointed at the old repository"
 grep -q "$base.app.tar.gz.sig" "$calls/gh" && grep -q latest.json "$calls/gh" || fail "gh wasn't given the bundle files"

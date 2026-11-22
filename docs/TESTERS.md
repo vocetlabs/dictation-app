@@ -22,7 +22,7 @@ text:
 
 1. Download the DMG (`Vocet_<version>_aarch64.dmg`) from the newest
    release at
-   <https://github.com/gargankit90/dictation-app/releases/latest>,
+   <https://github.com/vocetlabs/dictation-app/releases/latest>,
    or use the one you were sent, and open it.
 2. Drag **Vocet** onto the **Applications** shortcut in the window.
 3. Eject the DMG (Finder sidebar, or drag it to the Trash).
@@ -48,7 +48,7 @@ If macOS still refuses to open it, tell us in a bug report (see "Report a bug" b
 exact words it shows.
 
 Vocet lives in the **menu bar** (top right of the screen, an icon
-without a Dock entry), not in the Dock. The first time it opens, a setup window walks you through five steps. If you
+without a Dock entry), not in the Dock. The first time it opens, a setup window walks you through four steps. If you
 don't see it, click the menu-bar icon.
 
 ## 3. First run: the setup window
@@ -56,12 +56,16 @@ don't see it, click the menu-bar icon.
 The window has a list of steps on the side and **Continue** and **Back**
 buttons. A permission step moves on by itself once you have allowed it.
 
-1. **Welcome.** Click **Get started**.
+1. **Welcome.** Click **Get started**. That agrees to the
+   [Terms](https://vocetlabs.com/terms) and the
+   [Privacy Policy](https://vocetlabs.com/privacy), which are linked under the
+   button; nothing is reported before you click it.
 2. **Speech.** Choose how to turn speech into text (Vocet 0.2 is for
    English):
    - **Use OpenRouter** (selected by default): click **Continue**, then **Connect OpenRouter**.
      Your browser opens OpenRouter; sign in and allow it. A new account needs
-     a few dollars of credit: **Add credits** opens that page. The key
+     a few dollars of credit: **Add credits** opens that page once you are
+     connected. The key
      OpenRouter makes is kept in your macOS Keychain and never shown in
      full. If the browser can't come back, **Paste a key instead**. It is sent only to
      OpenRouter.
@@ -78,10 +82,9 @@ buttons. A permission step moves on by itself once you have allowed it.
    badge means you refused it earlier: switch it on in System Settings.
 4. **Try it.** Your dictation key is shown (the right Option key, right of the
    space bar; **Change…** picks another). Hold it, say a sentence and let go.
-   The words appear in the box. Click **Done**.
-5. **You're set.** A summary of your key, speech and history. Here you can
-   choose **Open Vocet when I log in** and the **Share usage and error
-   events** switch (see "Privacy" below). Click **Start dictating**.
+   The words appear in the box. **Open Vocet when I log in** is ticked by
+   default; untick it if you don't want that. Click **Done**: the window
+   closes, and Vocet lives in the menu bar.
 
 ### Changing things later: Settings
 
@@ -167,8 +170,8 @@ and install it over the old app, as in section 1.
   Mac and not sent anywhere. With **OpenRouter**, it goes through OpenRouter.
   Your history stays on this Mac. Audio stays in memory.
 - **Usage and error events (random install ID) are on by default.** Turn them off with
-  **Share usage and error events** in Settings > Privacy (or on the last setup
-  screen). Off takes effect at once and deletes what was waiting. Usage events carry
+  **Share usage and error events** in Settings > Privacy. Reports start when you
+  click **Get started**. Off takes effect at once and deletes what was waiting. Usage events carry
   no audio, no text you dictated, no API keys and no app names. A crash report includes the app version, the macOS major version, an error code and a stack trace: function names and source-file locations from Vocet, the libraries it uses and the Rust standard library, as they were when the app was built. It never includes the error message, paths to your files, your audio, dictated text, keys or app names.
   Everything that can be sent is listed in [privacy.md](privacy.md).
 
@@ -192,7 +195,7 @@ are not written at all.
 
 ## Report a bug
 
-Open an issue: <https://github.com/gargankit90/dictation-app/issues/new/choose>
+Open an issue: <https://github.com/vocetlabs/dictation-app/issues/new/choose>
 and pick **Bug report**. The form asks for:
 
 - your macOS version (Apple menu > **About This Mac**) and Mac model,
@@ -235,16 +238,16 @@ The same list is in the [changelog](../CHANGELOG.md).
 - Apple Silicon Macs only, macOS 13 or newer. Windows comes later.
 - **Don't press other keys while you hold the dictation key.** If you do, the
   recording is dropped without a message
-  ([#315](https://github.com/gargankit90/dictation-app/issues/315); fixed
+  ([#315](https://github.com/vocetlabs/dictation-app/issues/315); fixed
   after 0.1.0).
 - A long dictation on an on-device model can take a while, and has no time
-  limit yet ([#316](https://github.com/gargankit90/dictation-app/issues/316)).
+  limit yet ([#316](https://github.com/vocetlabs/dictation-app/issues/316)).
 - Recordings stop after 5 minutes.
 - Fully offline use of **On this Mac** is not yet checked on a Mac with no
   network.
 - A crash inside the on-device engine is not reported (it could contain what
   you said): if the app quits on its own, tell us in a bug report
-  ([#226](https://github.com/gargankit90/dictation-app/issues/226)).
+  ([#226](https://github.com/vocetlabs/dictation-app/issues/226)).
 - With **OpenRouter**, speech goes through OpenRouter to OpenAI, and the
   text to a cleanup model. Don't dictate anything you would not send to a cloud service.
 - Usage and error events are on by default; turn them off in

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LocalModelInfo_Serialize } from "../bindings";
-import { modelDetails, modelRow } from "./modelRow";
+import { downloadSize, modelDetails, modelRow, wholeDownloadSize } from "./modelRow";
 import type { RowContext } from "./modelRow";
 
 const SIZE = 477_274_496;
@@ -133,5 +133,29 @@ describe("Design Lead round 1: model details", () => {
       "OrukQwen English · English only · works offline · audio stays on this Mac",
     );
     expect(modelDetails(model())).not.toContain("nothing is sent");
+  });
+});
+
+describe("the on-device download's size (TOS1)", () => {
+  it("is the whole download, speech plus cleanup, summed from the catalogue", () => {
+    const speech = model({ size_bytes: 1_319_830_656 });
+    const cleanup = model({ id: "gemma", size_bytes: 3_106_738_272 });
+    expect(wholeDownloadSize(speech, cleanup)).toBe("4.4 GB");
+  });
+
+  it("follows the catalogue's sizes, not a literal", () => {
+    const speech = model({ size_bytes: 1_000_000_000 });
+    const cleanup = model({ id: "gemma", size_bytes: 2_000_000_000 });
+    expect(wholeDownloadSize(speech, cleanup)).toBe("3.0 GB");
+  });
+
+  it("is unknown until the cleanup model is listed: no size that is too small", () => {
+    expect(wholeDownloadSize(model(), null)).toBeNull();
+  });
+
+  it("a download button shows gigabytes from 1 GB up, megabytes below", () => {
+    expect(downloadSize(4_426_568_928)).toBe("4.4 GB");
+    expect(downloadSize(477_000_000)).toBe("477 MB");
+    expect(downloadSize(1_000_000_000)).toBe("1.0 GB");
   });
 });

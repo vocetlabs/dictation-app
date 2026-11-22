@@ -1,11 +1,10 @@
-// U8: the five onboarding steps, with the app's commands replaced by a fake
+// U8, TOS1: the four onboarding steps, with the app's commands replaced by a fake
 // backend through `mockIPC` that keeps the step and refuses to skip one, as
 // the app does. The keys here are made up.
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { App } from "./App";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LocalModelInfo_Serialize,
   OnboardingStatus,
@@ -15,24 +14,20 @@ import type {
   Transcription,
   View,
 } from "./bindings";
+import { App } from "./App";
 import { Onboarding, RELAUNCH_AFTER_POLLS, STEPS } from "./Onboarding";
 import css from "./settings.css?raw";
 import {
-  EVENTS_CAPTION,
-  EVENTS_FROM_NOW_CAPTION,
-  EVENTS_OFF_CAPTION,
-  FINISH_REASON,
-} from "./onboarding/ReadyStep";
-import { EXPLAINER } from "./settings/connection";
-import {
-  KEY_CARD_COPY,
+  KEY_POINTS,
   KEY_REASON,
   KEY_SAVED,
-  KEY_SAVED_COPY,
-  LOCAL_ONLY,
-  MODEL_COPY,
+  KEY_SUMMARY,
+  MODEL_SUMMARY,
+  OPENROUTER_EXPLAINER,
   SpeechStep,
+  modelPoints,
 } from "./onboarding/SpeechStep";
+import { PASTE_AFTER_MS } from "./settings/connection";
 import {
   ASKED_AGAIN,
   BOTH_REASON,
@@ -45,7 +40,7 @@ import { Privacy } from "./settings/Privacy";
 import { keyDown, keyUp, releaseAllKeys } from "./testKeys";
 
 const KEY = "sk-or-dummy-NOT-A-REAL-KEY-0123456789";
-const ORDER: Step[] = ["welcome", "speech", "permissions", "try", "ready"];
+const ORDER: Step[] = ["welcome", "speech", "permissions", "try"];
 
 const PARAKEET: LocalModelInfo_Serialize = {
   id: "parakeet-unified-en-0.6b-q4_k_m",
@@ -87,7 +82,7 @@ class Backend {
   accessibility: PermissionStatus = "not_determined";
   needsRelaunch = false;
   askedAgain = false;
-  sharingOnThroughout = true;
+  acceptedTerms = false;
   /** The server answers a resume with the whole file. */
   ignoresRange = false;
   micAnswer: PermissionStatus = "granted";
@@ -108,6 +103,11 @@ class Backend {
     message: null,
   };
   testResult: string | null = null;
+  /** What `openrouter_credits` answers (`null`: nothing readable). */
+  credit: { balance: number | null; key_limit_left: number | null } | null = {
+    balance: 4.82,
+    key_limit_left: null,
+  };
   /** Fails the command named, with the message (a string, as the app sends). */
   failing = new Map<string, string>();
   /** Holds the command named until the promise settles. */
@@ -124,7 +124,6 @@ class Backend {
       accessibility: this.accessibility,
       needs_relaunch: this.needsRelaunch,
       asked_again: this.askedAgain,
-      sharing_on_throughout: this.sharingOnThroughout,
     };
   }
 
@@ -134,7 +133,6 @@ class Backend {
       speech: this.settings.transcription === "local" || this.keys.openrouter,
       permissions: this.microphone === "granted" && this.accessibility === "granted",
       try: true,
-      ready: true,
     };
     return ORDER.slice(0, ORDER.indexOf(step)).every((before) => done[before]);
   }
@@ -151,6 +149,9 @@ class Backend {
     switch (command) {
       case "get_onboarding":
         return this.status();
+      case "accept_terms":
+        this.acceptedTerms = true;
+        return null;
       case "request_permission":
         if (args.permission === "microphone" && this.microphone === "not_determined") {
           this.microphone = this.micAnswer;
@@ -188,6 +189,11 @@ class Backend {
         return args.enabled;
       case "saved_key_hint":
         return this.keys.openrouter ? "sk-or-…cdef" : null;
+      case "openrouter_credits": {
+        const held = this.holds.get(command);
+        if (held !== undefined) return held.then(() => null);
+        return this.keys.openrouter ? this.credit : null;
+      }
       case "connect_openrouter": {
         const failure = this.failing.get(command);
         // eslint-disable-next-line @typescript-eslint/only-throw-error
@@ -293,21 +299,26 @@ function refocus() {
   });
 }
 
+/** The one element the page has for `selector`. */
+function found(selector: string): HTMLElement {
+  const element = document.querySelector<HTMLElement>(selector);
+  if (element === null) throw new Error(`nothing matches ${selector}`);
+  return element;
+}
+
 function primary(name: string | RegExp): HTMLButtonElement {
   return screen.getByRole("button", { name });
 }
 
-const SAVING_REASON = "Saving your choice…";
-
 describe("the frame", () => {
-  it("criterion 1: exactly these five steps, in order, on the rail", async () => {
+  it("criterion 1: exactly these four steps, in order, on the rail", async () => {
     show();
     const rail = await screen.findByRole("navigation", { name: "Setup steps" });
     expect(
       within(rail)
         .getAllByRole("listitem")
         .map((item) => item.textContent),
-    ).toEqual(["1Welcome", "2Speech", "3Permissions", "4Try it", "5Ready"]);
+    ).toEqual(["1Welcome", "2Speech", "3Permissions", "4Try it"]);
     expect(STEPS.map((step) => step.id)).toEqual(ORDER);
   });
 
@@ -386,7 +397,12 @@ describe("Welcome", () => {
       expect(primary("Get started").disabled).toBe(false);
     });
     const content = document.querySelector<HTMLElement>(".ob-content");
-    expect(content?.querySelector("input, select, textarea, button, a")).toBeNull();
+    // The only controls are the two links in the Terms line.
+    expect(
+      Array.from(content?.querySelectorAll("input, select, textarea, button, a") ?? []).map(
+        (control) => control.textContent,
+      ),
+    ).toEqual(["Terms", "Privacy Policy"]);
     expect(content?.textContent).not.toMatch(
       /usage|error events|anonymous|sharing|share|analytics/i,
     );
@@ -438,153 +454,68 @@ describe("Welcome", () => {
     await screen.findByText("How should Vocet transcribe?");
     expect(backend.step).toBe("speech");
   });
+
+  it("TOS1 round 3: says the person agrees to the Terms and Privacy Policy, right under the demo", async () => {
+    show();
+    await screen.findByText("Talk instead of type");
+    const line = found(".ob-terms");
+    expect(line.textContent).toBe("By continuing, you agree to the Terms and Privacy Policy.");
+    // Right below the demo card, above the footer's divider; not a checkbox.
+    expect(document.querySelector(".ob-demo")?.nextElementSibling).toBe(line);
+    expect(document.querySelector(".ob-content")?.contains(line)).toBe(true);
+    expect(document.querySelector(".ob-footer")?.contains(line)).toBe(false);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    fireEvent.click(within(line).getByRole("button", { name: "Terms" }));
+    fireEvent.click(within(line).getByRole("button", { name: "Privacy Policy" }));
+    await waitFor(() => {
+      expect(backend.named("open_link").map((call) => call.args.link)).toEqual([
+        "terms",
+        "privacy",
+      ]);
+    });
+    expect(backend.acceptedTerms).toBe(false);
+  });
+
+  it("TOS1: Get started stores the Terms first, then moves on; nothing before it", async () => {
+    show();
+    await screen.findByText("Talk instead of type");
+    await waitFor(() => {
+      expect(primary("Get started").disabled).toBe(false);
+    });
+    expect(backend.named("accept_terms")).toEqual([]);
+    fireEvent.click(primary("Get started"));
+    await screen.findByText("How should Vocet transcribe?");
+    expect(backend.acceptedTerms).toBe(true);
+    const order = backend.calls.map((call) => call.command);
+    expect(order.indexOf("accept_terms")).toBeLessThan(order.indexOf("set_onboarding_step"));
+  });
+
+  it("TOS1: if the Terms can't be stored, it stays on Welcome and says so; Get started retries", async () => {
+    const original = backend.handle;
+    let failing = true;
+    mockIPC((command, payload) => {
+      if (command === "accept_terms" && failing) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw "the onboarding task crashed";
+      }
+      return original(command, payload);
+    });
+    show();
+    await screen.findByText("Talk instead of type");
+    await waitFor(() => {
+      expect(primary("Get started").disabled).toBe(false);
+    });
+    fireEvent.click(primary("Get started"));
+    await screen.findByText(/onboarding task crashed/);
+    expect(backend.step).toBe("welcome");
+    failing = false;
+    fireEvent.click(primary("Get started"));
+    await screen.findByText("How should Vocet transcribe?");
+  });
 });
 
-describe("the sharing switch across setup (U10)", () => {
-  it.each(["speech", "permissions", "try"] as const)(
-    "criterion 1: %s has no sharing switch",
-    async (step) => {
-      backend.allSet(step);
-      show();
-      await screen.findByRole("navigation", { name: "Setup steps" });
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-      expect(screen.queryByRole("switch", { name: /usage and error events/i })).toBeNull();
-      expect(screen.queryByText("What's sent")).toBeNull();
-    },
-  );
-
-  it("criterion 1: Ready has the switch, on by default, with What's sent", async () => {
-    backend.allSet("ready");
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    expect(share.checked).toBe(true);
-    expect(screen.getByText(EVENTS_CAPTION)).toBeTruthy();
-    expect(screen.getByText("What's sent")).toBeTruthy();
-  });
-
-  it("criterion 3: a stored off shows off on Ready, and setup writes nothing", async () => {
-    backend.settings = { ...backend.settings, share_usage_events: false };
-    backend.allSet("ready");
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    await waitFor(() => {
-      expect(share.checked).toBe(false);
-    });
-    expect(screen.getByText(EVENTS_OFF_CAPTION)).toBeTruthy();
-    expect(screen.queryByText(EVENTS_CAPTION)).toBeNull();
-    fireEvent.click(primary("Start dictating"));
-    await waitFor(() => {
-      expect(backend.named("finish_onboarding")).toHaveLength(1);
-    });
-    expect(backend.named("set_share_usage_events")).toEqual([]);
-    expect(backend.settings.share_usage_events).toBe(false);
-  });
-
-  it("criterion 7: What's sent says what really happens", async () => {
-    backend.allSet("ready");
-    show();
-    await screen.findByText("What's sent");
-    const words = screen.getByText("What's sent").closest("details")?.textContent ?? "";
-    expect(words).toContain("from the first setup screen");
-    expect(words).toContain("deletes what is waiting");
-    expect(words).toContain("can't recall what was already sent");
-    expect(words).toContain("where you stopped");
-    expect(EVENTS_CAPTION).toContain("On since setup began");
-    expect(EVENTS_CAPTION).toContain("Off stops them and deletes what's waiting");
-    expect(EVENTS_OFF_CAPTION).toContain("Settings → Privacy");
-    expect(EVENTS_CAPTION).not.toMatch(/nothing is sent|until you/i);
-  });
-
-  it("round 2: stored off, then on at Ready, doesn't claim it was on since setup began", async () => {
-    backend.settings = { ...backend.settings, share_usage_events: false };
-    backend.sharingOnThroughout = false;
-    backend.allSet("ready");
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    await screen.findByText(EVENTS_OFF_CAPTION);
-    fireEvent.click(share);
-    await waitFor(() => {
-      expect(backend.settings.share_usage_events).toBe(true);
-    });
-    await screen.findByText(EVENTS_FROM_NOW_CAPTION);
-    expect(screen.queryByText(EVENTS_CAPTION)).toBeNull();
-    expect(EVENTS_FROM_NOW_CAPTION).not.toMatch(/since/i);
-  });
-
-  // What the app reports for this, an old progress file and one it can't read too:
-  // u10_unknown_sharing_history_never_claims_on_since_setup_began, in Rust.
-  it("round 3: history that says off or is unknown doesn't claim it", async () => {
-    backend.sharingOnThroughout = false;
-    backend.allSet("ready");
-    show();
-    await screen.findByText(EVENTS_FROM_NOW_CAPTION);
-    expect(screen.queryByText(EVENTS_CAPTION)).toBeNull();
-  });
-
-  it("round 2: off and on again at Ready says from now, before the app's next report", async () => {
-    backend.allSet("ready");
-    show();
-    await screen.findByText(EVENTS_CAPTION);
-    const share = screen.getByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    fireEvent.click(share);
-    await screen.findByText(EVENTS_OFF_CAPTION);
-    fireEvent.click(share);
-    await screen.findByText(EVENTS_FROM_NOW_CAPTION);
-    expect(backend.sharingOnThroughout).toBe(true);
-    expect(screen.queryByText(EVENTS_CAPTION)).toBeNull();
-  });
-
-  it("round 2: no caption claims anything before the stored choice is read", async () => {
-    backend.allSet("ready");
-    const held: { finish: () => void } = { finish: () => undefined };
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      if (command !== "get_settings") return original(command, payload);
-      return new Promise((resolve) => {
-        held.finish = () => {
-          resolve(original(command, payload));
-        };
-      });
-    });
-    show();
-    await screen.findByText("You're set");
-    expect(screen.queryByText(EVENTS_CAPTION)).toBeNull();
-    expect(screen.queryByText(EVENTS_FROM_NOW_CAPTION)).toBeNull();
-    act(() => {
-      held.finish();
-    });
-    await screen.findByText(EVENTS_CAPTION);
-  });
-
-  it("item 1: a click on What's sent opens it on Ready, and it stays open", async () => {
-    backend.allSet("ready");
-    show();
-    const summary = await screen.findByText("What's sent");
-    const details = summary.closest("details");
-    if (details === null) throw new Error("no disclosure");
-    expect(details.open).toBe(false);
-    fireEvent.click(summary);
-    expect(details.open).toBe(true);
-    // And stays open through the shell's polling, which re-renders the step.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-    });
-    expect(details.open).toBe(true);
-    fireEvent.click(summary);
-    expect(details.open).toBe(false);
-  });
-
-  it("item 1: What's sent opens on Settings → Privacy too", () => {
+describe("Settings → Privacy", () => {
+  it("What's sent opens on Settings → Privacy, and links to both pages", async () => {
     render(<Privacy settings={backend.settings} onStored={() => undefined} />);
     const summary = screen.getByText("What's sent");
     const details = summary.closest("details");
@@ -592,285 +523,21 @@ describe("the sharing switch across setup (U10)", () => {
     expect(details.open).toBe(false);
     fireEvent.click(summary);
     expect(details.open).toBe(true);
-  });
-
-  it("a failed write made elsewhere doesn't trap a step with no switch", async () => {
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
-      if (command === "set_share_usage_events") throw "Couldn't write the settings file.";
-      return original(command, payload);
-    });
-    const settings = render(<Privacy settings={backend.settings} onStored={() => undefined} />);
-    fireEvent.click(screen.getByRole("switch", { name: "Share usage and error events" }));
-    await screen.findByRole("alert");
-    settings.unmount();
-
-    show();
-    await screen.findByText("Talk instead of type");
+    fireEvent.click(screen.getByRole("button", { name: "Read the privacy policy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the Terms" }));
     await waitFor(() => {
-      expect(primary("Get started").disabled).toBe(false);
-    });
-    fireEvent.click(primary("Get started"));
-    await screen.findByText("How should Vocet transcribe?");
-  });
-});
-
-describe("one queue for the whole window (round 5)", () => {
-  /** Holds every sharing write until it is released, oldest first. */
-  function holdWrites() {
-    const pending: (() => void)[] = [];
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      if (command !== "set_share_usage_events") return original(command, payload);
-      return new Promise((resolve) => {
-        pending.push(() => {
-          resolve(original(command, payload));
-        });
-      });
-    });
-    return pending;
-  }
-
-  async function releaseOne(pending: (() => void)[]) {
-    await act(async () => {
-      pending.shift()?.();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-  }
-
-  const noop = () => undefined;
-
-  it("an old write from onboarding can't land after a newer off in Settings", async () => {
-    backend.settings = { ...backend.settings, share_usage_events: false };
-    backend.allSet("ready");
-    const pending = holdWrites();
-    const setup = show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    await waitFor(() => {
-      expect(share.checked).toBe(false);
-    });
-    fireEvent.click(share); // on, still on its way
-    expect(pending).toHaveLength(1);
-
-    // The tray's Settings… takes the view away; the write goes on.
-    setup.unmount();
-    render(
-      <Privacy settings={{ ...backend.settings, share_usage_events: true }} onStored={noop} />,
-    );
-    const inSettings = screen.getByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    expect(inSettings.checked).toBe(true);
-    fireEvent.click(inSettings); // off, the user's last word
-
-    // Not sent alongside the old one: it waits its turn, so nothing can overtake.
-    expect(pending).toHaveLength(1);
-    await releaseOne(pending);
-    expect(pending).toHaveLength(1);
-    expect(inSettings.checked).toBe(false);
-    await releaseOne(pending);
-
-    expect(backend.settings.share_usage_events).toBe(false);
-    expect(backend.named("set_share_usage_events").map((call) => call.args.share)).toEqual([
-      true,
-      false,
-    ]);
-  });
-
-  it("a write from Settings holds onboarding's Get started when it comes back", async () => {
-    const pending = holdWrites();
-    const settings = render(<Privacy settings={backend.settings} onStored={noop} />);
-    fireEvent.click(screen.getByRole("switch", { name: "Share usage and error events" }));
-    expect(pending).toHaveLength(1);
-    settings.unmount();
-
-    show();
-    await screen.findByText("Talk instead of type");
-    await waitFor(() => {
-      expect(primary("Get started").disabled).toBe(true);
-    });
-    fireEvent.click(primary("Get started"));
-    expect(backend.named("set_onboarding_step")).toEqual([]);
-
-    await releaseOne(pending);
-    await waitFor(() => {
-      expect(primary("Get started").disabled).toBe(false);
-    });
-    expect(backend.settings.share_usage_events).toBe(false);
-  });
-
-  it("a view that stayed behind learns the final value", async () => {
-    const stored: boolean[] = [];
-    const pending = holdWrites();
-    render(
-      <Privacy
-        settings={backend.settings}
-        onStored={(settings) => stored.push(settings.share_usage_events)}
-      />,
-    );
-    fireEvent.click(screen.getByRole("switch", { name: "Share usage and error events" }));
-    await releaseOne(pending);
-    await waitFor(() => {
-      expect(stored).toEqual([false]);
-    });
-  });
-});
-
-// U8 finding 1 and round 2, moved from Welcome with the switch (U10 criterion 5):
-// Off on Ready, right before Start dictating, can't be overtaken.
-describe("Ready's switch before Start dictating", () => {
-  beforeEach(() => {
-    backend.allSet("ready");
-  });
-
-  /** Holds `set_share_usage_events` until `finish` is called. */
-  function holdTheWrite(fail = false) {
-    const held: { finish: () => void } = { finish: () => undefined };
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      if (command !== "set_share_usage_events") return original(command, payload);
-      return new Promise((resolve, reject) => {
-        held.finish = () => {
-          if (fail) {
-            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-            reject("Couldn't write the settings file.");
-            return;
-          }
-          resolve(original(command, payload));
-        };
-      });
-    });
-    return held;
-  }
-
-  it("Start dictating can't overtake an opt-out still being written", async () => {
-    const held = holdTheWrite();
-    show();
-    fireEvent.click(await screen.findByRole("switch", { name: "Share usage and error events" }));
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(true);
-    });
-    expect(screen.getByText(SAVING_REASON)).toBeTruthy();
-    fireEvent.click(primary("Start dictating"));
-    expect(backend.named("finish_onboarding")).toEqual([]);
-
-    act(() => {
-      held.finish();
-    });
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(false);
-    });
-    expect(backend.settings.share_usage_events).toBe(false);
-    fireEvent.click(primary("Start dictating"));
-    await waitFor(() => {
-      expect(backend.named("finish_onboarding")).toHaveLength(1);
+      expect(backend.named("open_link").map((call) => call.args.link)).toEqual([
+        "privacy",
+        "terms",
+      ]);
     });
   });
 
-  /**
-   * Holds every sharing write, applying each only when it is released, as the
-   * app's blocking pool may: nothing orders commands sent one after another.
-   */
-  function holdEveryWrite() {
-    const pending: (() => void)[] = [];
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      if (command !== "set_share_usage_events") return original(command, payload);
-      return new Promise((resolve) => {
-        pending.push(() => {
-          resolve(original(command, payload));
-        });
-      });
-    });
-    return pending;
-  }
-
-  /** Releases the newest write first, until none is left. */
-  async function releaseNewestFirst(pending: (() => void)[]) {
-    for (let round = 0; round < 8; round += 1) {
-      await act(async () => {
-        pending.pop()?.();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    }
-  }
-
-  it("round 2: a slow on can't land after the final off", async () => {
-    backend.settings = { ...backend.settings, share_usage_events: false };
-    const pending = holdEveryWrite();
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    await waitFor(() => {
-      expect(share.checked).toBe(false);
-    });
-    fireEvent.click(share); // on
-    fireEvent.click(share); // off, the user's last word
-    expect(share.checked).toBe(false);
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(true);
-    });
-    // With overlapping writes, this applies off and then on.
-    await releaseNewestFirst(pending);
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(false);
-    });
-    expect(backend.settings.share_usage_events).toBe(false);
-    expect(share.checked).toBe(false);
-  });
-
-  it("round 2: on, off, on ends on, and Start dictating waits for all of it", async () => {
-    const pending = holdEveryWrite();
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    fireEvent.click(share); // off
-    fireEvent.click(share); // on
-    fireEvent.click(share); // off
-    fireEvent.click(share); // on
-    expect(pending).toHaveLength(1);
-    expect(primary("Start dictating").disabled).toBe(true);
-    await act(async () => {
-      pending.pop()?.();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    // The first write done: only the last choice is sent next, and Start dictating waits for it.
-    expect(pending).toHaveLength(1);
-    expect(primary("Start dictating").disabled).toBe(true);
-    await releaseNewestFirst(pending);
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(false);
-    });
-    expect(backend.settings.share_usage_events).toBe(true);
-    expect(backend.named("set_share_usage_events").map((call) => call.args.share)).toEqual([
-      false,
-      true,
-    ]);
-  });
-
-  it("stays locked after a failed opt-out, and the switch shows what is saved", async () => {
-    const held = holdTheWrite(true);
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    fireEvent.click(share);
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(true);
-    });
-    act(() => {
-      held.finish();
-    });
-    await screen.findByText(FINISH_REASON);
-    expect(primary("Start dictating").disabled).toBe(true);
-    expect(share.checked).toBe(true);
-    fireEvent.click(primary("Start dictating"));
-    expect(backend.named("finish_onboarding")).toEqual([]);
+  it("says reports start at Get started, with no exception for setup", () => {
+    render(<Privacy settings={backend.settings} onStored={() => undefined} />);
+    fireEvent.click(screen.getByText("What's sent"));
+    expect(document.body.textContent).toContain("starting when you press Get started");
+    expect(document.body.textContent).not.toMatch(/before the switch is shown/i);
   });
 });
 
@@ -882,7 +549,7 @@ describe("Speech", () => {
 
   it("Q3: a fresh install selects OpenRouter, listed first, with Continue to Connect", async () => {
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     const radios = screen.getAllByRole<HTMLInputElement>("radio", {
       name: /OpenRouter|Use this Mac/,
     });
@@ -892,19 +559,69 @@ describe("Speech", () => {
     expect(backend.settings.transcription).toBe("cloud");
   });
 
+  it("TOS1: the on-device card shows the whole download, speech plus cleanup", async () => {
+    backend.cleanup = [{ ...GEMMA }];
+    backend.models = [{ ...PARAKEET, size_bytes: 1_319_830_656 }];
+    show();
+    await screen.findByText("Works offline after a one-time 4.4 GB download");
+  });
+
+  it("TOS1: until the cleanup model is listed there is no size, so none is claimed", async () => {
+    show();
+    await screen.findByText(MODEL_SUMMARY);
+    screen.getByText("Works offline after a one-time download");
+    expect(document.querySelector(".ob-main")?.textContent).not.toMatch(/\d GB/);
+  });
+
+  it("TOS1 round 3: each card has a title, a one-line summary and short points", async () => {
+    backend.cleanup = [{ ...GEMMA }];
+    backend.models = [{ ...PARAKEET, size_bytes: 1_319_830_656 }];
+    show();
+    await screen.findByText("Works offline after a one-time 4.4 GB download");
+    const [openrouter, mac] = Array.from(document.querySelectorAll<HTMLElement>(".ob-option"));
+    expect(openrouter?.querySelector(".ob-card-title")?.textContent).toBe(
+      "Use OpenRouter Recommended",
+    );
+    expect(openrouter?.querySelector(".ob-caption")?.textContent).toBe(KEY_SUMMARY);
+    expect(
+      Array.from(openrouter?.querySelectorAll("li") ?? []).map((item) => item.textContent),
+    ).toEqual([...KEY_POINTS]);
+    expect(mac?.querySelector(".ob-card-title")?.textContent).toBe("On this Mac");
+    expect(mac?.querySelector(".ob-caption")?.textContent).toBe(MODEL_SUMMARY);
+    expect(Array.from(mac?.querySelectorAll("li") ?? []).map((item) => item.textContent)).toEqual([
+      ...modelPoints("4.4 GB"),
+    ]);
+    // Three or four points each, and the facts the owner gave.
+    expect(KEY_POINTS.length).toBeGreaterThanOrEqual(3);
+    expect(KEY_POINTS.length).toBeLessThanOrEqual(4);
+    expect(modelPoints(null)).toHaveLength(4);
+    expect(KEY_POINTS).toContain("OpenRouter is one account for many AI models.");
+    expect(KEY_POINTS).toContain("Most accurate");
+    expect(KEY_POINTS).toContain("Needs internet");
+    expect(modelPoints("4.4 GB")).toContain("Free, no account");
+    expect(modelPoints("4.4 GB")).toContain("Your audio and text never leave your Mac");
+  });
+
+  it("TOS1 round 3: the cards claim no price, speed or memory figure", () => {
+    const words = [KEY_SUMMARY, MODEL_SUMMARY, ...KEY_POINTS, ...modelPoints("4.4 GB")].join(" ");
+    expect(words).not.toMatch(/\$|cents|per hour|\bms\b|seconds|RAM|memory/i);
+    // The only number is the download's size, from the catalogue.
+    expect(words.match(/\d/g)?.join("")).toBe("44");
+  });
+
   it("criterion 3: English preselects Parakeet English, with its real size", async () => {
     show();
-    const name = await screen.findByText("English · 477 MB");
+    const name = await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     expect(name).toBeTruthy();
     expect(screen.getByText("On this Mac")).toBeTruthy();
-    expect(screen.getByText(MODEL_COPY)).toBeTruthy();
+    expect(screen.getByText(MODEL_SUMMARY)).toBeTruthy();
     expect(primary("Download and continue").disabled).toBe(false);
   });
 
   it("criterion 3: Download and continue chooses, starts the download and moves on", async () => {
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(primary("Download and continue"));
     await screen.findByText("Two permissions");
@@ -917,7 +634,7 @@ describe("Speech", () => {
   it("criterion 3: a model already here says Continue and downloads nothing", async () => {
     backend.model(PARAKEET.id).state = "ready";
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(primary("Continue"));
     await screen.findByText("Two permissions");
@@ -932,7 +649,7 @@ describe("Speech", () => {
     backend.cleanup = [{ ...GEMMA, state: "partial", downloaded_bytes: 1_000_000_000 }];
     backend.settings = { ...backend.settings, transcription: "local" };
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     // The label says a download is left.
     await waitFor(() => {
@@ -950,7 +667,7 @@ describe("Speech", () => {
     backend.cleanup = [{ ...GEMMA, state: "downloading", downloaded_bytes: 1_000_000_000 }];
     backend.settings = { ...backend.settings, transcription: "local" };
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(await screen.findByRole("button", { name: "Download and continue" }));
     await screen.findByText("Two permissions");
@@ -960,7 +677,7 @@ describe("Speech", () => {
   it("Q4 round 7: a missing speech model starts the download even while the cleanup model downloads", async () => {
     backend.cleanup = [{ ...GEMMA, state: "downloading", downloaded_bytes: 1_000_000_000 }];
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(await screen.findByRole("button", { name: "Download and continue" }));
     await screen.findByText("Two permissions");
@@ -977,7 +694,7 @@ describe("Speech", () => {
     })(backend.handle);
     mockIPC(backend.handle);
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(primary("Download and continue"));
     await screen.findByText("The disk is full.");
@@ -987,7 +704,7 @@ describe("Speech", () => {
   /** Selects OpenRouter on the two choices, and nothing else happens. */
   async function selectCloud() {
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     // OpenRouter is the default: move off it and back, so the choice is written.
     fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
     fireEvent.click(screen.getByRole("radio", { name: /Use OpenRouter/ }));
@@ -1009,7 +726,7 @@ describe("Speech", () => {
     const picks: string[] = [];
     render(
       <SpeechStep
-        parts={{ back: null, strip: null, error: null, busy: false, exitBlock: null }}
+        parts={{ back: null, strip: null, error: null, busy: false }}
         kept={null}
         onPick={(choice) => picks.push(choice)}
         settings={backend.settings}
@@ -1033,7 +750,7 @@ describe("Speech", () => {
   it("Q4 round 6: pressing the preselected OpenRouter card keeps the choice after Back", async () => {
     // A click on a checked radio fires no change, so the card records it on click.
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     const card = () => screen.getByRole<HTMLInputElement>("radio", { name: /Use OpenRouter/ });
     expect(card().checked).toBe(true);
     fireEvent.click(card());
@@ -1057,11 +774,11 @@ describe("Speech", () => {
 
   it("Q3: Continue opens the screen, Back returns with all as it was", async () => {
     show();
-    await screen.findByText("English · 477 MB");
+    await screen.findByText(MODEL_SUMMARY);
     fireEvent.click(screen.getByRole("radio", { name: /Use OpenRouter/ }));
     fireEvent.click(primary("Continue"));
     await screen.findByText("Connect OpenRouter", { selector: "h1, h2" });
-    screen.getByText(EXPLAINER);
+    screen.getByText(OPENROUTER_EXPLAINER);
     const current = () => document.querySelector('[aria-current="step"]')?.textContent;
     expect(current()).toContain("Speech");
     expect(backend.step).toBe("speech");
@@ -1076,16 +793,25 @@ describe("Speech", () => {
     );
   });
 
-  it("Q3: the explainer says what OpenRouter costs, and Continue waits for the connection", async () => {
+  it("TOS1: not connected: one sentence and one primary button; no paste link up front", async () => {
     await openConnectScreen();
     // The saved-key lookup has settled once the footer gives its reason.
     await screen.findByText(KEY_REASON);
-    expect(EXPLAINER).toContain("about $0.70 per 1,000 dictations");
-    expect(EXPLAINER).toContain("a few dollars of credit");
+    expect(OPENROUTER_EXPLAINER).toContain("a few dollars of credit");
+    expect(OPENROUTER_EXPLAINER).not.toMatch(/\$|per hour|cents/i);
     expect(primary("Continue").disabled).toBe(true);
-    expect(screen.getByText(KEY_REASON)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+    const panel = found("#connect-panel");
+    expect(panel.querySelectorAll("button.primary")).toHaveLength(1);
+    expect(within(panel).getByRole("button", { name: "Connect OpenRouter" })).toBeTruthy();
+    for (const gone of [
+      "Paste a key instead",
+      "Add credits",
+      "Disconnect",
+      "Connect again",
+      "I'll use Vocet on this Mac only",
+    ]) {
+      expect(screen.queryByRole("button", { name: gone })).toBeNull();
+    }
   });
 
   it("Q3: Connect OpenRouter saves the key, unlocks Continue, and the provider is the engine", async () => {
@@ -1100,13 +826,7 @@ describe("Speech", () => {
     expect(backend.named("download_local_model")).toEqual([]);
   });
 
-  it.each([
-    ["Back", () => fireEvent.click(screen.getByRole("button", { name: "Back" }))],
-    [
-      "the local-only choice",
-      () => fireEvent.click(screen.getByRole("button", { name: LOCAL_ONLY })),
-    ],
-  ])(
+  it.each([["Back", () => fireEvent.click(screen.getByRole("button", { name: "Back" }))]])(
     "Q3: %s while the key is already being saved stays on the screen and shows the outcome",
     async (_name, leave) => {
       let release: () => void = () => undefined;
@@ -1151,27 +871,167 @@ describe("Speech", () => {
     expect(backend.named("cancel_connect")).toHaveLength(1);
   });
 
-  it('Q3: "I\'ll use Vocet on this Mac only" goes back with the on-device model chosen', async () => {
-    await openConnectScreen();
-    fireEvent.click(screen.getByRole("button", { name: LOCAL_ONLY }));
-    await screen.findByText("How should Vocet transcribe?");
-    expect(screen.getByRole<HTMLInputElement>("radio", { name: "Use this Mac" }).checked).toBe(
-      true,
-    );
-  });
-
-  it("Q3: a saved key shows Connected with the masked key, and Continue is open", async () => {
+  it("TOS1 round 3: connected: a tick, the credit left with an Add credits button beside it, Continue", async () => {
     backend.keys.openrouter = true;
     await openConnectScreen();
     await screen.findByText(KEY_SAVED);
-    screen.getByText(KEY_SAVED_COPY);
-    await screen.findByText("Connected: sk-or-…cdef");
+    const left = await screen.findByText("$4.82 left");
     expect(primary("Continue").disabled).toBe(false);
-    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+    const credits = screen.getByRole("button", { name: "Add credits" });
+    // A button, beside the balance (the same row), not a link.
+    expect(credits.className).toBe("");
+    expect(credits.parentElement?.className).toBe("ob-credit");
+    expect(credits.parentElement?.contains(left)).toBe(true);
+    fireEvent.click(credits);
+    await waitFor(() => {
+      expect(backend.named("open_link")[0]?.args).toEqual({ link: "openrouter_credits" });
+    });
+    // The key isn't shown in setup at all.
+    expect(document.body.textContent).not.toMatch(/sk-or|cdef|Key ending/);
+    for (const gone of [
+      "Connect again",
+      "Connect OpenRouter",
+      "Paste a key instead",
+      "Disconnect",
+      "I'll use Vocet on this Mac only",
+    ]) {
+      expect(screen.queryByRole("button", { name: gone })).toBeNull();
+    }
   });
 
-  it("Q3: Paste a key instead tests and saves a typed key", async () => {
+  it("TOS1 round 3: a key with a spending limit shows what is left of it", async () => {
+    backend.keys.openrouter = true;
+    backend.credit = { balance: 4.8, key_limit_left: 2.5 };
     await openConnectScreen();
+    await screen.findByText("$4.80 left");
+    screen.getByText("Spending limit: $2.50 left");
+  });
+
+  it.each([
+    ["nothing readable", null],
+    ["no number in it", { balance: null, key_limit_left: null }],
+  ])(
+    "TOS1 round 3: with %s, just the tick and the button, and Continue works",
+    async (_n, credit) => {
+      backend.keys.openrouter = true;
+      backend.credit = credit;
+      await openConnectScreen();
+      await screen.findByText(KEY_SAVED);
+      await waitFor(() => {
+        expect(backend.named("openrouter_credits")).toHaveLength(1);
+      });
+      expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+      expect(document.querySelector("#connect-credit")).toBeNull();
+      expect(primary("Continue").disabled).toBe(false);
+    },
+  );
+
+  it("TOS1 round 3: a slow or failing balance never blocks Continue", async () => {
+    backend.keys.openrouter = true;
+    backend.holds.set("openrouter_credits", new Promise<void>(() => undefined));
+    await openConnectScreen();
+    await screen.findByText(KEY_SAVED);
+    expect(primary("Continue").disabled).toBe(false);
+    expect(document.querySelector("#connect-credit")).toBeNull();
+  });
+
+  it("TOS1 round 3: the balance is asked again when the window gets focus back", async () => {
+    backend.keys.openrouter = true;
+    await openConnectScreen();
+    await screen.findByText("$4.82 left");
+    backend.credit = { balance: 9.5, key_limit_left: null };
+    fireEvent.focus(window);
+    await screen.findByText("$9.50 left");
+    expect(backend.named("openrouter_credits").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("TOS1 round 3: a failed refresh keeps the amount already shown", async () => {
+    backend.keys.openrouter = true;
+    await openConnectScreen();
+    await screen.findByText("$4.82 left");
+    backend.credit = null;
+    fireEvent.focus(window);
+    await waitFor(() => {
+      expect(backend.named("openrouter_credits").length).toBeGreaterThanOrEqual(2);
+    });
+    screen.getByText("$4.82 left");
+  });
+
+  it("TOS1 round 3: not connected, the balance isn't asked for", async () => {
+    await openConnectScreen();
+    await screen.findByText(KEY_REASON);
+    expect(backend.named("openrouter_credits")).toEqual([]);
+  });
+
+  it("TOS1 round 3: Having trouble? Paste a key instead appears only after the sign-in waits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      backend.holds.set("connect_openrouter", new Promise<void>(() => undefined));
+      await openConnectScreen();
+      fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+      await screen.findByText("Waiting for OpenRouter in your browser…");
+      expect(screen.queryByRole("button", { name: "Paste a key instead" })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PASTE_AFTER_MS - 1000);
+      });
+      expect(screen.queryByRole("button", { name: "Paste a key instead" })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      screen.getByText("Having trouble?");
+      screen.getByRole("button", { name: "Paste a key instead" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("TOS1 round 3: a key pasted while the sign-in waits ends the wait and is saved", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      backend.holds.set("connect_openrouter", new Promise<void>(() => undefined));
+      await openConnectScreen();
+      fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+      await screen.findByText("Waiting for OpenRouter in your browser…");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PASTE_AFTER_MS + 500);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Paste a key instead" }));
+      fireEvent.change(await screen.findByLabelText("OpenRouter API key"), {
+        target: { value: KEY },
+      });
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Test & Save" }).disabled).toBe(
+        false,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Test & Save" }));
+      await screen.findByText(KEY_SAVED);
+      expect(backend.named("cancel_connect")).toHaveLength(1);
+      expect(backend.named("set_api_key")).toHaveLength(1);
+      expect(primary("Continue").disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("TOS1 round 3: the paste link also appears after a failed sign-in, and stays", async () => {
+    backend.failing.set("connect_openrouter", "Connecting took too long. Try again.");
+    await openConnectScreen();
+    expect(screen.queryByRole("button", { name: "Paste a key instead" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+    await screen.findByText("Connecting took too long. Try again.");
+    screen.getByRole("button", { name: "Paste a key instead" });
+  });
+
+  /** A sign-in that failed: the paste link is then offered. */
+  async function afterFailedSignIn() {
+    backend.failing.set("connect_openrouter", "Connecting took too long. Try again.");
+    await openConnectScreen();
+    fireEvent.click(screen.getByRole("button", { name: "Connect OpenRouter" }));
+    await screen.findByText("Connecting took too long. Try again.");
+    backend.failing.delete("connect_openrouter");
+  }
+
+  it("Q3: Paste a key instead tests and saves a typed key", async () => {
+    await afterFailedSignIn();
     fireEvent.click(screen.getByRole("button", { name: "Paste a key instead" }));
     const field = await screen.findByLabelText("OpenRouter API key");
     expect(field.getAttribute("type")).toBe("password");
@@ -1184,7 +1044,7 @@ describe("Speech", () => {
 
   it("Q3: a pasted key the provider rejects keeps Continue locked, and saves nothing", async () => {
     backend.testResult = "OpenRouter rejected this API key.";
-    await openConnectScreen();
+    await afterFailedSignIn();
     fireEvent.click(screen.getByRole("button", { name: "Paste a key instead" }));
     fireEvent.change(await screen.findByLabelText("OpenRouter API key"), {
       target: { value: KEY },
@@ -1198,15 +1058,14 @@ describe("Speech", () => {
   describe("U11 criterion 5: the cards' exact wording", () => {
     it("English", async () => {
       show();
-      await screen.findByText("English · 477 MB");
-      screen.getByText("Runs on this Mac. Works offline after a one-time download.");
-      screen.getByText("Use OpenRouter");
-      screen.getByText(KEY_CARD_COPY);
+      await screen.findByText(MODEL_SUMMARY);
+      screen.getByText("Use OpenRouter", { exact: false });
+      screen.getByText(KEY_SUMMARY);
     });
 
     it("no catalogue name and no refused wording, on any of the screens", async () => {
       show();
-      await screen.findByText("English · 477 MB");
+      await screen.findByText(MODEL_SUMMARY);
       fireEvent.click(screen.getByRole("radio", { name: "Use this Mac" }));
       const shown = () => document.querySelector(".ob-main")?.textContent ?? "";
       const clean = () => {
@@ -1245,7 +1104,7 @@ describe("the download strip", () => {
   }
 
   it("criterion 3: shows real progress and Cancel on every later step", async () => {
-    for (const step of ["permissions", "try", "ready"] as const) {
+    for (const step of ["permissions", "try"] as const) {
       backend = new Backend();
       mockIPC(backend.handle);
       downloading();
@@ -1514,10 +1373,62 @@ describe("Try it", () => {
     expect(screen.getByText("Your dictation key").tagName).toBe("SPAN");
   });
 
-  it("Done moves on to Ready, whatever the box holds", async () => {
+  it("TOS1: Done finishes setup, whatever the box holds, and applies the checkbox (on by default)", async () => {
+    render(<App />);
+    await screen.findByText("Your dictation key");
+    const box = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Open Vocet when I log in",
+    });
+    expect(box.checked).toBe(true);
+    expect(backend.settings.launch_at_login).toBe(false);
+    fireEvent.click(primary("Done"));
+    await waitFor(() => {
+      expect(backend.named("finish_onboarding")).toHaveLength(1);
+    });
+    expect(backend.named("set_launch_at_login")[0]?.args).toEqual({ enabled: true });
+    expect(backend.settings.launch_at_login).toBe(true);
+    // Applied before setup ends, so a failure can still be shown.
+    const order = backend.calls.map((call) => call.command);
+    expect(order.indexOf("set_launch_at_login")).toBeLessThan(order.indexOf("finish_onboarding"));
+    await waitFor(() => {
+      expect(screen.queryByRole("navigation", { name: "Setup steps" })).toBeNull();
+    });
+    expect(screen.queryByText("You're set")).toBeNull();
+  });
+
+  it("TOS1: an unchecked box is applied as off", async () => {
+    backend.settings = { ...backend.settings, launch_at_login: true };
+    await stepOpen();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Open Vocet when I log in" }));
+    fireEvent.click(primary("Done"));
+    await waitFor(() => {
+      expect(backend.named("finish_onboarding")).toHaveLength(1);
+    });
+    expect(backend.named("set_launch_at_login")[0]?.args).toEqual({ enabled: false });
+    expect(backend.settings.launch_at_login).toBe(false);
+  });
+
+  it("TOS1: a login item that can't be set is said, and setup stays open", async () => {
+    const original = backend.handle;
+    mockIPC((command, payload) => {
+      if (command === "set_launch_at_login") {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw "Couldn't change the login item.";
+      }
+      return original(command, payload);
+    });
     await stepOpen();
     fireEvent.click(primary("Done"));
-    await screen.findByText("You're set");
+    await screen.findByText("Couldn't change the login item.");
+    expect(backend.named("finish_onboarding")).toEqual([]);
+  });
+
+  it("TOS1: Try it is the last step and points to the menu bar", async () => {
+    await stepOpen();
+    expect(screen.getByText(/Find Vocet in the menu bar/)).toBeTruthy();
+    expect(screen.queryByText("Ready")).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/usage and error events/i);
   });
 
   it("U11 criterion 7: no Reset to default, a small Change key, and the instruction", async () => {
@@ -1589,233 +1500,6 @@ describe("Try it", () => {
       });
       expect(box.value).toBe("");
       releaseAllKeys();
-    });
-  });
-});
-
-describe("Ready", () => {
-  beforeEach(() => {
-    backend.allSet("ready");
-  });
-
-  it("criterion 6: shows the real states", async () => {
-    show();
-    await screen.findByText("You're set");
-    await screen.findByText("Right ⌥ (hold)");
-    await screen.findByText("On this Mac · English · ✓ Ready");
-    expect(screen.getByText("Find Vocet in the menu bar", { exact: false })).toBeTruthy();
-    expect(
-      screen.getByRole<HTMLInputElement>("switch", { name: "Open Vocet when I log in" }).checked,
-    ).toBe(false);
-  });
-
-  it("criterion 6: while the model isn't ready it doesn't say Ready", async () => {
-    const model = backend.model(PARAKEET.id);
-    model.state = "downloading";
-    model.downloaded_bytes = 477_000_000 / 2;
-    show();
-    await screen.findByText("On this Mac · English · Getting the model ready: 50%");
-  });
-
-  it("criterion 6: the own key says Connected only with a key saved", async () => {
-    backend.settings = { ...backend.settings, transcription: "cloud" };
-    backend.keys.openrouter = true;
-    show();
-    await screen.findByText("OpenRouter · ✓ Connected");
-  });
-
-  it("the events row is a switch that shows the real state and applies at once", async () => {
-    backend.settings = { ...backend.settings, share_usage_events: false };
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    await waitFor(() => {
-      expect(share.checked).toBe(false);
-    });
-    fireEvent.click(share);
-    await waitFor(() => {
-      expect(backend.settings.share_usage_events).toBe(true);
-    });
-    expect(backend.named("set_share_usage_events")).toEqual([
-      { command: "set_share_usage_events", args: { share: true } },
-    ]);
-    expect(backend.step).toBe("ready");
-    expect(share.checked).toBe(true);
-  });
-
-  it("nothing leaves Ready while the switch is saving, and the last choice wins", async () => {
-    const pending: (() => void)[] = [];
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      if (command !== "set_share_usage_events") return original(command, payload);
-      return new Promise((resolve) => {
-        pending.push(() => {
-          resolve(original(command, payload));
-        });
-      });
-    });
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    fireEvent.click(share); // off
-    fireEvent.click(share); // on
-    fireEvent.click(share); // off
-    expect(pending).toHaveLength(1);
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(true);
-    });
-    expect(primary("Back").disabled).toBe(true);
-    for (let round = 0; round < 4; round += 1) {
-      await act(async () => {
-        pending.pop()?.();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    }
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(false);
-    });
-    expect(backend.settings.share_usage_events).toBe(false);
-    expect(share.checked).toBe(false);
-  });
-
-  // Round 4: every way out, tried while the writes are pending, between them,
-  // and after them. Each of these commands is what can send an event.
-  it.each([
-    { exit: "Start dictating", command: "finish_onboarding" },
-    { exit: "Back", command: "set_onboarding_step" },
-    { exit: "the strip's Use my own key", command: "set_onboarding_step" },
-  ])("$exit waits for the sharing writes", async ({ exit, command }) => {
-    // A paused model, so the strip offers its way out too.
-    const model = backend.model(PARAKEET.id);
-    model.state = "partial";
-    model.downloaded_bytes = 212_000_000;
-    const pending: (() => void)[] = [];
-    const original = backend.handle;
-    mockIPC((name, payload) => {
-      if (name !== "set_share_usage_events") return original(name, payload);
-      return new Promise((resolve) => {
-        pending.push(() => {
-          resolve(original(name, payload));
-        });
-      });
-    });
-    show();
-    const share = await screen.findByRole<HTMLInputElement>("switch", {
-      name: "Share usage and error events",
-    });
-    await screen.findByRole("button", { name: "Use my own key" });
-    const pressExit = () => {
-      const name = exit === "the strip's Use my own key" ? "Use my own key" : exit;
-      fireEvent.click(screen.getByRole("button", { name }));
-    };
-    const exitCalls = () => backend.named(command);
-
-    fireEvent.click(share); // off
-    fireEvent.click(share); // on
-    fireEvent.click(share); // off, the user's last word
-    pressExit();
-    expect(exitCalls()).toEqual([]);
-
-    // Between the writes: the first is done, the last still pending.
-    await act(async () => {
-      pending.pop()?.();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    expect(pending).toHaveLength(1);
-    pressExit();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    expect(exitCalls()).toEqual([]);
-    expect(backend.step).toBe("ready");
-
-    await act(async () => {
-      pending.pop()?.();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    await waitFor(() => {
-      expect(primary("Start dictating").disabled).toBe(false);
-    });
-    expect(backend.settings.share_usage_events).toBe(false);
-    expect(exitCalls()).toEqual([]);
-
-    // Now it works, and only after the final choice is stored.
-    pressExit();
-    await waitFor(() => {
-      expect(exitCalls()).toHaveLength(1);
-    });
-    const last = backend.calls.map((call) => call.command);
-    expect(last.lastIndexOf("set_share_usage_events")).toBeLessThan(last.lastIndexOf(command));
-  });
-
-  it("a failed save holds every way out", async () => {
-    const model = backend.model(PARAKEET.id);
-    model.state = "partial";
-    const original = backend.handle;
-    mockIPC((name, payload) => {
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
-      if (name === "set_share_usage_events") throw "Couldn't write the settings file.";
-      return original(name, payload);
-    });
-    show();
-    fireEvent.click(await screen.findByRole("switch", { name: "Share usage and error events" }));
-    await screen.findByText(FINISH_REASON);
-    for (const name of ["Start dictating", "Back", "Use my own key"]) {
-      fireEvent.click(screen.getByRole("button", { name }));
-    }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    for (const command of ["finish_onboarding", "set_onboarding_step"]) {
-      expect(backend.named(command)).toEqual([]);
-    }
-  });
-
-  it("stays on Ready after a failed opt-out, and says why", async () => {
-    const original = backend.handle;
-    mockIPC((command, payload) => {
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
-      if (command === "set_share_usage_events") throw "Couldn't write the settings file.";
-      return original(command, payload);
-    });
-    show();
-    fireEvent.click(await screen.findByRole("switch", { name: "Share usage and error events" }));
-    await screen.findByText(FINISH_REASON);
-    expect(primary("Start dictating").disabled).toBe(true);
-    fireEvent.click(primary("Start dictating"));
-    expect(backend.named("finish_onboarding")).toEqual([]);
-  });
-
-  it("criterion 6: shows the real history limit", async () => {
-    backend.settings = { ...backend.settings, history_limit: 50 };
-    render(<App />);
-    await screen.findByText(/Keeps your last 50 dictations on this Mac/);
-  });
-
-  it("criterion 6: says when history is off", async () => {
-    backend.settings = { ...backend.settings, history_limit: 0 };
-    show();
-    await screen.findByText(/^Off/);
-  });
-
-  it("criterion 6: the login switch goes through S1's command", async () => {
-    show();
-    fireEvent.click(await screen.findByRole("switch", { name: "Open Vocet when I log in" }));
-    await waitFor(() => {
-      expect(backend.settings.launch_at_login).toBe(true);
-    });
-  });
-
-  it("criterion 6: Start dictating finishes setup and leaves onboarding", async () => {
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Start dictating" }));
-    await waitFor(() => {
-      expect(backend.named("finish_onboarding")).toHaveLength(1);
-    });
-    await waitFor(() => {
-      expect(screen.queryByRole("navigation", { name: "Setup steps" })).toBeNull();
     });
   });
 });

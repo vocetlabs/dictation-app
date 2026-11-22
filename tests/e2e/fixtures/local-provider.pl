@@ -49,6 +49,10 @@
 #   connect-key        the key `POST …/auth/keys` hands out (Q3, Connect
 #                      OpenRouter); a made-up one, which accept-key.sha256
 #                      should accept. Without the file the exchange fails (500).
+#   credits            "<total_credits> <total_usage>" in dollars, for the
+#                      credit balance (`GET …/credits`, then the app shows
+#                      "$<total_credits - total_usage> left"); "10 5.18" when
+#                      absent. A bad or missing key gets a 401.
 #   force-status       a status code (402, ...): every speech and cleanup
 #                      request with the good key gets that status, with
 #                      OpenRouter's error body, instead of its answer.
@@ -60,6 +64,11 @@
 # PKCE pair (S256 of the verifier must be the challenge) and answers
 # {"key": <connect-key>}. Events: `auth-start`, `auth-callback status=<s>`,
 # `exchange pkce=ok|bad code=ok|bad`; never the key, code or verifier.
+#
+# The credit balance (TOS1): `GET …/credits` answers OpenRouter's
+# {"data":{"total_credits":C,"total_usage":U}} and `GET …/key` its key info
+# with no spending limit, both for the good key only. Event:
+# `credits auth=good|bad|none`, `key-info auth=good|bad|none`.
 #
 # GET /health answers 200 "ok" and isn't counted.
 use strict;
@@ -321,6 +330,31 @@ sub serve {
       $want =~ s/\s+//g;
     }
     $auth = ($want ne '' && sha256_hex($1) eq lc $want) ? 'good' : 'bad';
+  }
+  if ($method eq 'GET' && $path =~ m{/credits$}) {
+    my ($credits, $usage) = (10, 5.18);
+    if (open my $fh, '<', "$dir/credits") {
+      my $line = <$fh> // '';
+      close $fh;
+      ($credits, $usage) = ($1, $2) if $line =~ /^\s*(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$/;
+    }
+    if ($auth eq 'good') {
+      respond($sock, 200, 'OK', JSON::PP->new->canonical->encode({
+        data => { total_credits => $credits + 0, total_usage => $usage + 0 } }));
+    } else {
+      respond($sock, 401, 'Unauthorized', '{"error":{"message":"Invalid API Key","code":401}}');
+    }
+    event("credits auth=$auth");
+    return;
+  }
+  if ($method eq 'GET' && $path =~ m{/key$}) {
+    if ($auth eq 'good') {
+      respond($sock, 200, 'OK', '{"data":{"label":"Vocet on this Mac","limit":null,"limit_remaining":null,"usage":0}}');
+    } else {
+      respond($sock, 401, 'Unauthorized', '{"error":{"message":"Invalid API Key","code":401}}');
+    }
+    event("key-info auth=$auth");
+    return;
   }
   my $json = json_body($body);
   if ($method eq 'POST' && $path =~ m{/chat/completions$}) {
