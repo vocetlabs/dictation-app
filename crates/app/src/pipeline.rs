@@ -218,6 +218,12 @@ impl CleanupStep {
         self
     }
 
+    /// Opens the cleaner's connection ahead of the request (best effort).
+    fn warm_up(&self) {
+        let cleaner = Arc::clone(&self.cleaner);
+        tokio::spawn(async move { cleaner.warm_up_boxed().await });
+    }
+
     /// The text to paste for `raw`, and what happened (`None` when cleanup
     /// is off).
     async fn run(&self, raw: &str) -> (Option<String>, Option<CleanupOutcome>) {
@@ -228,14 +234,18 @@ impl CleanupStep {
             .prompt_boxed()
             .unwrap_or_else(cleanup_rules::prompt);
         let reply = tokio::time::timeout(timeout, self.cleaner.clean_boxed(raw)).await;
+        let mut provider = None;
         let (cleaned, outcome) = match reply {
-            Ok(Ok(reply)) => match cleanup_rules::judge(raw, &reply, prompt) {
-                Judgement::Accepted => (Some(reply), CleanupOutcome::Applied),
-                refused => {
-                    tracing::debug!(reason = refused.name(), "cleanup refused");
-                    (None, CleanupOutcome::FallbackGuard)
+            Ok(Ok((reply, host))) => {
+                provider = host;
+                match cleanup_rules::judge(raw, &reply, prompt) {
+                    Judgement::Accepted => (Some(reply), CleanupOutcome::Applied),
+                    refused => {
+                        tracing::debug!(reason = refused.name(), "cleanup refused");
+                        (None, CleanupOutcome::FallbackGuard)
+                    }
                 }
-            },
+            }
             Ok(Err(CleanupError::Off)) => return (None, None),
             Ok(Err(CleanupError::Timeout)) | Err(_) => {
                 tracing::debug!(?timeout, "cleanup timed out; pasting the raw text");
@@ -248,9 +258,11 @@ impl CleanupStep {
         };
         // One line per dictation, never the text: tests and `e2e_real_openrouter`
         // read the outcome from it.
+        // `provider` is the host's name when the provider's reply gave one.
         tracing::info!(
             outcome = outcome.name(),
             duration_ms = started.elapsed().as_millis(),
+            provider = provider.as_deref(),
             "cleanup"
         );
         (cleaned, Some(outcome))
@@ -266,20 +278,25 @@ impl std::fmt::Debug for CleanupStep {
 }
 
 /// A future of a cleanup reply.
-type CleanupFuture<'a> = Pin<Box<dyn Future<Output = Result<String, CleanupError>> + Send + 'a>>;
+type CleanupFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(String, Option<String>), CleanupError>> + Send + 'a>>;
 
 /// [`Cleaner`] behind a pointer: the port's `impl Future` isn't
 /// dyn-compatible, so the step boxes each call (one allocation per
 /// dictation).
 trait BoxedCleaner: Send + Sync {
     fn clean_boxed<'a>(&'a self, text: &'a str) -> CleanupFuture<'a>;
+    fn warm_up_boxed(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
     fn deadline_boxed(&self) -> Option<Duration>;
     fn prompt_boxed(&self) -> Option<&'static str>;
 }
 
 impl<C: Cleaner> BoxedCleaner for C {
     fn clean_boxed<'a>(&'a self, text: &'a str) -> CleanupFuture<'a> {
-        Box::pin(self.clean(text))
+        Box::pin(self.clean_with_host(text))
+    }
+    fn warm_up_boxed(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(self.warm_up())
     }
     fn deadline_boxed(&self) -> Option<Duration> {
         self.deadline()
@@ -1045,7 +1062,14 @@ where
     fn key_event(&self, key: HotkeyEvent, at: Duration) -> Option<Event> {
         Some(match key {
             HotkeyEvent::Pressed => match self.press_permissions() {
-                PressPermissions::Ready => Event::HotkeyPressed(at),
+                PressPermissions::Ready => {
+                    // Open the cloud connection while the user speaks, so the
+                    // calls after key-up reuse it (LAT1).
+                    if let Some(cleanup) = &self.cleanup {
+                        cleanup.warm_up();
+                    }
+                    Event::HotkeyPressed(at)
+                }
                 PressPermissions::Missing(permission) => Event::PermissionMissing(permission),
                 // The macOS prompt is up: nothing to show yet (#161), and
                 // the coordinator stays Idle, so nothing records or pastes.

@@ -100,7 +100,12 @@ async fn cleanup_sends_zdr_low_reasoning_and_the_prompt() {
     assert_eq!(body["model"], "z-ai/glm-5.3-flash");
     assert_eq!(
         body["provider"],
-        serde_json::json!({"zdr": true, "data_collection": "deny"})
+        serde_json::json!({
+            "zdr": true,
+            "data_collection": "deny",
+            "order": ["inference-net", "together", "coreweave"],
+            "allow_fallbacks": true,
+        })
     );
     assert_eq!(body["reasoning"]["effort"], "low");
     assert_eq!(body["temperature"], 0);
