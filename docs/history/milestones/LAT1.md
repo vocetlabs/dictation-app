@@ -35,3 +35,12 @@ The owner keeps the 1.5 s deadline (speed first) and leaves hedging for later.
 ## Out of scope
 
 Hedged or parallel requests; a different speech model; local cleanup; deadline changes.
+
+## LAT1b (2026-11-22): order changed
+
+The Lead's offline replay (151 saved gpt-4o-mini drafts, the app's request pinned to one host, Claude
+as judge) found Together and CoreWeave better than InferenceNet on cleanup quality, with similar speed.
+Together: p50 0.66 s, 7.3% over 1.5 s, ZER 86.1 (83.4 with the deadline). CoreWeave: 0.74 s, 7.3%,
+86.1 (82.8). InferenceNet: 0.69 s, 4.6%, 82.1 (80.8). Fireworks was over 1.5 s for 50% of requests; Z.AI
+refused the zdr filter. The order is now `together`, `coreweave`, `inference-net`; `allow_fallbacks` and
+the privacy filter are unchanged.

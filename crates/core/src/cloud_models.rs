@@ -14,13 +14,16 @@ pub const SPEECH_MODEL: &str = "openai/gpt-4o-mini-transcribe";
 /// for low effort; they carry [`PrivacyFilter::ZeroDataRetention`].
 pub const CLEANUP_MODEL: &str = "z-ai/glm-5.3-flash";
 
-/// The hosts cleanup asks `OpenRouter` to try first, in order (LAT1). Checked
-/// 2026-11-22 against 150 dictations: with GLM spread over 19 hosts, the
-/// timeouts came from the host, and `InferenceNet` and `CoreWeave` had 1 in
-/// 41 requests against 20 in 109 for the rest. The privacy filter still
-/// applies to these; `allow_fallbacks` lets other hosts take over if all
-/// three are down.
-pub const CLEANUP_PROVIDER_ORDER: [&str; 3] = ["inference-net", "together", "coreweave"];
+/// The hosts cleanup asks `OpenRouter` to try first, in order (LAT1, LAT1b).
+/// LAT1 (2026-11-22, 150 dictations): GLM spread over 19 hosts timed out by
+/// host, not by text. LAT1b (2026-11-22, offline replay of 151 saved drafts
+/// with the request pinned to one host, judged by Claude): Together p50
+/// 0.66 s, 7.3% over 1.5 s, ZER 86.1 (83.4 with the deadline); `CoreWeave`
+/// 0.74 s, 7.3%, 86.1 (82.8); `InferenceNet` 0.69 s, 4.6%, 82.1 (80.8), so
+/// it goes last for its lower quality. Fireworks was over 1.5 s half the
+/// time; Z.AI refused the zdr filter. The privacy filter still applies;
+/// `allow_fallbacks` lets other hosts take over if all three are down.
+pub const CLEANUP_PROVIDER_ORDER: [&str; 3] = ["together", "coreweave", "inference-net"];
 
 /// The `OpenRouter` provider filter every request to a model carries. A
 /// request is never sent without it; if no provider matches, the request
