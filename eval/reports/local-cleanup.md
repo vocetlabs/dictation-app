@@ -18,7 +18,8 @@ Numbers only. No judging yet, so the judge column is empty. 2026-11-22, M4 Pro 2
   A first pass on a busier Mac gave identical guard results and p50 times within about 5% (up to 7%
   for Qwen3 4B Muesli); this is the rerun.
 - **Muesli framing** (Gemma4LiteRTBackend.swift, MIT): rules in the user turn, transcript in `<USER-INPUT>`,
-  no system turn. Run for the top 2 by guard pass rate among working models: Qwen3 1.7B and Qwen3 4B.
+  no system turn. Run for the top 2 by guard pass rate among working models, Qwen3 1.7B and Qwen3 4B, and later, at the
+  owner's request, for the Gemma 4 E2B baseline (run at `nice -n 19` while a VM bench ran; load average 3.7 to 3.9).
 - **Models:** each GGUF's SHA-256 equals the Hugging Face LFS id of the repo and file below. Eight were
   already on disk (`~/vocet-cleanup-models`, left alone); Llama 3.2 1B and the two Granite 4.0 files were
   downloaded and are deleted after the run. Nothing was dropped for lacking a GGUF. Gemma 4 E2B is the smallest
@@ -33,6 +34,7 @@ one empty draft).
 | Model (label) | Size | Licence | Guard fallbacks | Changed | Cleanup p50 / p95 (ms) | First token p50 (ms) | Load (s) | Peak RSS (MB) | VM p50 / p95 (ms) | Judge ZER |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | Gemma 4 E2B (baseline) (`gemma4-e2b`) | 3.11 GB | Apache-2.0 | 5/151 | 50.3% | 387 / 2438 | 40 | 0.64 | 3425 | – | |
+| Gemma 4 E2B (baseline) (Muesli framing) (`gemma4-e2b-muesli`) | 3.11 GB | Apache-2.0 | 4/151 | 49.7% | 411 / 2468 | 49 | 0.94 | 3255 | – | |
 | Qwen3 0.6B (`qwen3-0.6b`) | 0.40 GB | Apache-2.0 | 3/151 | 28.5% | 161 / 982 | 22 | 0.33 | 1014 | – | |
 | Qwen3 1.7B (`qwen3-1.7b`) | 1.11 GB | Apache-2.0 | 0/151 | 16.6% | 287 / 1795 | 44 | 0.43 | 1690 | – | |
 | Qwen3 1.7B (Muesli framing) (`qwen3-1.7b-muesli`) | 1.11 GB | Apache-2.0 | 0/151 | 10.6% | 319 / 1940 | 58 | 0.44 | 1690 | – | |
