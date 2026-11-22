@@ -7,12 +7,17 @@ the milestone's report.
 
 ## Results
 
-First full runs, 2026-11-22: [vocetlabs/dictation-bench run 44959966210](https://github.com/vocetlabs/dictation-bench/actions/runs/44959966210),
+First full runs, 2026-11-22: [vocetlabs/dictation-bench run 44959966210](https://github.com/vocetlabs/dictation-bench/actions/runs/44959966210)
+at bench commit [`d0fbb82`](https://github.com/vocetlabs/dictation-bench/commit/d0fbb82) (the Vocet rerun below:
+[`599fb5d`](https://github.com/vocetlabs/dictation-bench/commit/599fb5d)),
 one GitHub-hosted `macos-15` runner per app (Apple M1 virtual, 3 cores, 7 GB, paravirtual GPU), all 151 clips,
 accuracy only (`--accuracy-only`: 60 s text deadline, no latency reported). Judge: `anthropic/claude-opus-5.5`
 through OpenRouter, reasoning effort high, amend-va 0.2.1 prompt `v1` (fingerprint `8ed04caf4663`). Every run
-has exactly one app outcome per clip and no infrastructure faults; the numbers come from the uploaded
-`score.json` and `judge.json`, which `./bench verify` recomputes.
+has exactly one app outcome per clip and no infrastructure faults. The numbers come from the uploaded
+`score.json` (WER, outcomes) and `judge.json` (ZER, AMEND). `./bench verify` checks `score.json` only: it
+recomputes the WER totals, edit and word counts, failure rate and (for timed runs) the latency percentiles
+from the per-clip numbers in the same file, and the clip count. It does not check `judge.json`; ZER and AMEND
+there are computed from its own per-clip edit counts.
 
 | App | Version | Local model | Outcomes | WER intended % | WER spoken % | ZER % | AMEND % |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -49,7 +54,19 @@ Mac measure that. Key-up to text on the runner was 12-56 s per clip; it is not a
 | VoiceInk 2.27 | no: reaches recording, then VoiceInk ends each recording at once ("captured less than 150 ms"); cause not found | - |
 | OpenWhispr 1.12.0 | no (stopped at its 2-hour cap): settings written through its DevTools protocol, but neither its Globe/Fn default (software can't press it) nor Right Option starts a recording; no log without its debug setting | - |
 
-## Vocet: black box vs `--debug-audio-file` (acceptance criterion 2)
+## Acceptance criteria
+
+1. **[auto] Harness and scorer have tests** (in vocetlabs/dictation-bench; `./test.sh`, standard library only,
+   43 tests at `599fb5d`, all passing): `test_harness.py` runs the clip loop against a stub app on a fake
+   clock (the harness dry run; `./bench dry-run` does the same from the command line), `test_score.py` scores
+   fixed strings and refuses incomplete or mismatched runs, `test_judge.py` covers the judge with fake
+   endpoints. On real runners, the smoke matrix at `599fb5d` (run
+   [44970632009](https://github.com/vocetlabs/dictation-bench/actions/runs/44970632009)) passed for all four
+   apps. The bench's workflow runs the apps, not `./test.sh`; the tests run locally.
+2. **[auto] Vocet black box vs shortcut agree within noise: not done, open as #360** (below).
+3. **[manual]** Lead review of this report.
+
+## Vocet: black box vs `--debug-audio-file` (acceptance criterion 2, open: #360)
 
 Not done. A check that drove Vocet's debug-only `--debug-audio-file` shortcut through the bench's loop and
 compared it with a black-box run (full paired coverage, intended-WER difference within 1.5 points, fixed
@@ -70,5 +87,14 @@ it); Vocet is covered by the golden image's grants.
 - #360: AC 2, the Vocet black-box vs shortcut check.
 - #361: Vocet's local cleanup times out on slower hardware (148 of 150 on a runner).
 - vocetlabs/dictation-bench#1, #2: unattended setup for VoiceInk and OpenWhispr.
-- Speed: the REL2 release-gate runs (Vocet cloud and local, timed, in `dictation-vm-bench` on the owner's Mac)
-  are being set up with `eval/bench1_vm.sh` and `eval/bench1_judge_local.sh`.
+- Speed: the REL2 release-gate runs are done. Vocet `2044730` release build, timed, all 151 clips, in
+  `dictation-vm-bench` on the owner's Mac (4 virtual CPUs, 8 GB), 2026-11-22, with the bench at `599fb5d` and two
+  local run configs (`vocet-cloud`, `vocet-local`, not in the bench repository). They were judged with
+  `eval/bench1_judge_local.sh`.
+  - Cloud: 149 ok, 2 empty; WER intended 7.85, spoken 11.76; key-up to paste p50 2.09 s, p95 4.27 s; cleanup
+    127 applied, 21 timed out, 1 guarded; ZER 76.8, AMEND 2.25.
+  - Local: 151 ok; WER intended 10.36, spoken 6.67; key-up to paste p50 6.87 s, p95 17.46 s; cleanup 41
+    applied, 108 timed out, 2 guarded; ZER 64.2, AMEND 1.16.
+  - Against the REL2 gates, in the VM: cloud ZER 76.8 misses its 85 gate; local ZER 64.2 misses its 75 gate
+    (most local cleanups timed out); cloud speed misses p50 ≤ 2.0 s and p95 ≤ 3.5 s. Local speed on 8 GB is
+    recorded only; its p50 ≤ 1.5 s gate is for a 16 GB Mac. The real-Mac speed runs are still to do.
