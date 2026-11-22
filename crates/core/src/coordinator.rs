@@ -26,6 +26,15 @@ pub enum State {
         /// When the hotkey went down.
         started_at: Duration,
     },
+    /// Still capturing audio since `started_at`, after the hotkey source
+    /// lost track of the keyboard while the hotkey stayed held (#364). Only
+    /// a release seen from now on transcribes: at [`MAX_RECORDING`] the
+    /// recording is dropped (M1.6 criterion 2: a lost release never
+    /// transcribes).
+    RecordingAfterResync {
+        /// When the hotkey went down.
+        started_at: Duration,
+    },
     /// Waiting for the transcriber.
     Transcribing,
     /// Waiting for the text to be inserted.
@@ -51,7 +60,7 @@ impl State {
     pub fn phase(self) -> Phase {
         match self {
             State::Idle => Phase::Idle,
-            State::Recording { .. } => Phase::Recording,
+            State::Recording { .. } | State::RecordingAfterResync { .. } => Phase::Recording,
             State::Transcribing => Phase::Transcribing,
             State::Inserting => Phase::Inserting,
         }
@@ -85,7 +94,10 @@ fn transition(state: State, event: Event) -> (State, Vec<Command>) {
                 permission,
             ))],
         ),
-        (State::Recording { started_at }, Event::HotkeyReleased(now)) => {
+        (
+            State::Recording { started_at } | State::RecordingAfterResync { started_at },
+            Event::HotkeyReleased(now),
+        ) => {
             if now.saturating_sub(started_at) < MIN_HOLD {
                 (State::Idle, vec![Command::DiscardRecording])
             } else {
@@ -97,12 +109,22 @@ fn transition(state: State, event: Event) -> (State, Vec<Command>) {
         {
             stop_and_transcribe()
         }
-        (State::Recording { .. }, Event::CancelPressed | Event::HotkeyInterrupted) => {
+        // No release seen since the source lost track: it may be lost.
+        (State::RecordingAfterResync { started_at }, Event::Tick(now))
+            if now.saturating_sub(started_at) >= MAX_RECORDING =>
+        {
             (State::Idle, vec![Command::DiscardRecording])
         }
+        (State::Recording { started_at }, Event::HotkeyResynced) => {
+            (State::RecordingAfterResync { started_at }, Vec::new())
+        }
+        (
+            State::Recording { .. } | State::RecordingAfterResync { .. },
+            Event::CancelPressed | Event::HotkeyInterrupted,
+        ) => (State::Idle, vec![Command::DiscardRecording]),
         // Without a hotkey there's no release to end a recording: drop it.
         // Whatever else is going on finishes; the error is shown either way.
-        (State::Recording { .. }, Event::HotkeyFailed) => (
+        (State::Recording { .. } | State::RecordingAfterResync { .. }, Event::HotkeyFailed) => (
             State::Idle,
             vec![
                 Command::DiscardRecording,
@@ -113,7 +135,10 @@ fn transition(state: State, event: Event) -> (State, Vec<Command>) {
             state,
             vec![Command::ShowError(DictationError::HotkeyFailed)],
         ),
-        (State::Recording { .. }, Event::PermissionMissing(permission)) => (
+        (
+            State::Recording { .. } | State::RecordingAfterResync { .. },
+            Event::PermissionMissing(permission),
+        ) => (
             State::Idle,
             vec![
                 Command::DiscardRecording,
@@ -161,6 +186,9 @@ pub enum RecordingEnd {
     TooShort,
     /// [`MAX_RECORDING`] passed: the recording goes to the transcriber.
     MaxDuration,
+    /// [`MAX_RECORDING`] passed with no release seen since the hotkey
+    /// source lost track of the keyboard: the recording is dropped.
+    MaxDurationAfterResync,
     /// Esc, a shortcut on the hotkey's modifier, or lost hotkey events.
     Cancelled,
     /// The hotkey source lost track of the keyboard.
@@ -169,17 +197,21 @@ pub enum RecordingEnd {
     HotkeyFailed,
     /// A permission went missing.
     PermissionMissing,
+    /// The app quit (or relaunched) during the recording. The pipeline
+    /// logs it; no event gives it.
+    Shutdown,
 }
 
 /// Why `event` ends the recording `state` is in, or `None` if `state`
 /// isn't [`State::Recording`] or the recording goes on.
 #[must_use]
 pub fn recording_end(state: State, event: &Event) -> Option<RecordingEnd> {
-    let State::Recording { started_at } = state else {
+    let (State::Recording { started_at } | State::RecordingAfterResync { started_at }) = state
+    else {
         return None;
     };
     let (next, _) = transition(state, event.clone());
-    if matches!(next, State::Recording { .. }) {
+    if next.phase() == Phase::Recording {
         return None;
     }
     Some(match event {
@@ -187,6 +219,9 @@ pub fn recording_end(state: State, event: &Event) -> Option<RecordingEnd> {
             RecordingEnd::TooShort
         }
         Event::HotkeyReleased(_) => RecordingEnd::Released,
+        Event::Tick(_) if matches!(state, State::RecordingAfterResync { .. }) => {
+            RecordingEnd::MaxDurationAfterResync
+        }
         Event::Tick(_) => RecordingEnd::MaxDuration,
         Event::CancelPressed => RecordingEnd::Cancelled,
         Event::HotkeyInterrupted => RecordingEnd::HotkeyInterrupted,
@@ -623,6 +658,74 @@ mod tests {
         }
     }
 
+    /// M1.6 criterion 2 with #364: after a resync that showed the hotkey
+    /// still held, a release seen afterwards transcribes...
+    #[test]
+    fn fix364_a_release_after_a_resync_transcribes() {
+        let (state, commands) = step(recording_since(1_000), Event::HotkeyResynced);
+        assert_eq!(
+            state,
+            State::RecordingAfterResync {
+                started_at: ms(1_000)
+            }
+        );
+        assert!(commands.is_empty(), "{commands:?}");
+        // A second resync changes nothing.
+        let (state, _) = step(state, Event::HotkeyResynced);
+        assert_eq!(
+            state,
+            State::RecordingAfterResync {
+                started_at: ms(1_000)
+            }
+        );
+        let (state, commands) = step(state, Event::HotkeyReleased(ms(5_000)));
+        assert_eq!(state, State::Transcribing);
+        assert_eq!(
+            commands,
+            [
+                Command::StopRecording,
+                Command::Transcribe,
+                Command::StateChanged(Phase::Transcribing)
+            ]
+        );
+    }
+
+    /// ...but with no further input, the duration limit drops it: the
+    /// release may be lost, so it is never transcribed.
+    #[test]
+    fn fix364_no_input_after_a_resync_discards_at_the_limit() {
+        let (state, _) = step(recording_since(1_000), Event::HotkeyResynced);
+        let (state, commands) = step(state, Event::Tick(ms(2_000)));
+        assert_eq!(
+            state,
+            State::RecordingAfterResync {
+                started_at: ms(1_000)
+            }
+        );
+        assert_eq!(commands, []);
+        let limit = Event::Tick(ms(1_000) + MAX_RECORDING);
+        assert_eq!(
+            recording_end(state, &limit),
+            Some(RecordingEnd::MaxDurationAfterResync)
+        );
+        let (state, commands) = step(state, limit);
+        assert_eq!(state, State::Idle);
+        assert_eq!(
+            commands,
+            [
+                Command::DiscardRecording,
+                Command::StateChanged(Phase::Idle)
+            ]
+        );
+    }
+
+    #[test]
+    fn fix364_a_resync_outside_a_recording_changes_nothing() {
+        for state in [State::Idle, State::Transcribing, State::Inserting] {
+            assert_eq!(step(state, Event::HotkeyResynced), (state, Vec::new()));
+        }
+    }
+
     #[test]
     fn fix364_no_reason_while_the_recording_goes_on_or_outside_one() {
         let recording = recording_since(1_000);
@@ -631,6 +734,7 @@ mod tests {
             Event::HotkeyPressed(ms(2_000)),
             Event::AudioCaptured,
             Event::InsertDone,
+            Event::HotkeyResynced,
         ] {
             assert_eq!(recording_end(recording, &event), None, "{event:?}");
         }
@@ -696,6 +800,7 @@ mod proptests {
         Released,
         Cancel,
         Interrupted,
+        Resynced,
         HotkeyFailed,
         Tick,
         AudioCaptured,
@@ -717,6 +822,7 @@ mod proptests {
                 Just(EventKind::Released),
                 Just(EventKind::Cancel),
                 Just(EventKind::Interrupted),
+                Just(EventKind::Resynced),
                 Just(EventKind::HotkeyFailed),
                 Just(EventKind::Tick),
                 Just(EventKind::AudioCaptured),
@@ -737,6 +843,7 @@ mod proptests {
             EventKind::Released => Event::HotkeyReleased(now),
             EventKind::Cancel => Event::CancelPressed,
             EventKind::Interrupted => Event::HotkeyInterrupted,
+            EventKind::Resynced => Event::HotkeyResynced,
             EventKind::HotkeyFailed => Event::HotkeyFailed,
             EventKind::Tick => Event::Tick(now),
             EventKind::AudioCaptured => Event::AudioCaptured,
@@ -770,7 +877,7 @@ mod proptests {
         }
         assert_eq!(
             *recording,
-            matches!(next, State::Recording { .. }),
+            next.phase() == Phase::Recording,
             "recorder on/off doesn't match the state"
         );
         let changes: Vec<_> = commands

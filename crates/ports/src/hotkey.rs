@@ -26,6 +26,12 @@ pub enum HotkeyEvent {
     /// release may never come. Any hold in progress is over: drop what it
     /// started. The source keeps listening; the next press is a new one.
     Interrupted,
+    /// The source lost track of the keyboard for a while, but a
+    /// modifier-only hotkey's keys are still down by the OS's own account,
+    /// with sides it is sure of (#364). The hold goes on, but its release
+    /// must be seen: a hold that ends any other way (the duration limit) is
+    /// dropped, never transcribed (M1.6 criterion 2).
+    Resynced,
     /// The source stopped listening by itself (macOS: the event tap died,
     /// e.g. after Accessibility was revoked). It is the last event before
     /// the sink is dropped; [`HotkeySource::start`] works again afterwards.

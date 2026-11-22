@@ -77,8 +77,9 @@ type Open = Box<dyn FnMut() -> Result<Box<dyn RawKeys>, HotkeyError> + Send>;
 /// don't.
 ///
 /// If the event tap is paused and resumed, or misses a modifier change, it
-/// sends [`HotkeyEvent::Interrupted`], unless a modifier-only hotkey is
-/// still held then ([`HotkeyMatcher::on_resync`], #364); if it dies,
+/// sends [`HotkeyEvent::Interrupted`], or [`HotkeyEvent::Resynced`] if a
+/// modifier-only hotkey is still held then ([`HotkeyMatcher::on_resync`],
+/// #364); if it dies,
 /// [`HotkeyEvent::Failed`], after which `start` works again.
 pub struct MacHotkey {
     spec: HotkeySpec,
@@ -198,12 +199,10 @@ fn listen(
                 // are still down goes on; anything else is over (#364).
                 let out = matcher.on_resync(to_held(event.modifiers));
                 tracing::info!(
-                    hold_kept = out.is_none(),
+                    hold_kept = out == HotkeyEvent::Resynced,
                     "the hotkey listener lost track of the keyboard"
                 );
-                if let Some(out) = out {
-                    sink(out);
-                }
+                sink(out);
             }
             Ok(event) => {
                 if let Some(out) = matched(&mut matcher, &event) {
@@ -372,7 +371,7 @@ mod tests {
     use dictation_core::coordinator::{self, MAX_RECORDING, State};
     use dictation_core::events::{Command, Event};
     use dictation_ports::HotkeyEvent::{
-        CancelPressed, Failed, Interrupted, Pressed, Released, ShortcutPressed,
+        CancelPressed, Failed, Interrupted, Pressed, Released, Resynced, ShortcutPressed,
     };
 
     use super::*;
@@ -757,7 +756,7 @@ mod tests {
             KeyEvent::resync(RIGHT),
             modifier_event(none(), RIGHT, false),
         ]);
-        assert_eq!(out, [Pressed, Released]);
+        assert_eq!(out, [Pressed, Resynced, Released]);
         let commands = coordinate(&out);
         assert!(commands.contains(&Command::StopRecording), "{commands:?}");
         assert!(commands.contains(&Command::Transcribe), "{commands:?}");
@@ -765,6 +764,37 @@ mod tests {
             !commands.contains(&Command::DiscardRecording),
             "{commands:?}"
         );
+    }
+
+    /// M1.6 criterion 2 with #364: the tap was off while the key was down
+    /// and nothing comes after it was re-enabled. Kept or not, the
+    /// recording is never transcribed: at the limit it is dropped.
+    #[test]
+    fn fix364_a_resync_with_no_further_input_never_transcribes() {
+        for resync in [KeyEvent::resync(RIGHT), KeyEvent::resync(none())] {
+            let out = outputs(&[modifier_event(RIGHT, RIGHT, true), resync]);
+            let commands = coordinate(&out);
+            assert!(
+                commands.contains(&Command::DiscardRecording),
+                "{out:?}: {commands:?}"
+            );
+            assert!(
+                !commands.contains(&Command::Transcribe),
+                "{out:?}: {commands:?}"
+            );
+        }
+    }
+
+    /// Review r1: a resync that shows only Left Option interrupts a Right
+    /// Option hold. A resync whose Option side the OS didn't say comes with
+    /// Option left out (third_party/handy-keys, `resync_from`), so it
+    /// interrupts too, as before #364.
+    #[test]
+    fn fix364_a_resync_without_the_right_side_interrupts() {
+        for resync in [KeyEvent::resync(LEFT), KeyEvent::resync(none())] {
+            let out = outputs(&[modifier_event(RIGHT, RIGHT, true), resync]);
+            assert_eq!(out, [Pressed, Interrupted], "{resync:?}");
+        }
     }
 
     /// What the coordinator does with what the adapter sent, from Idle, one
@@ -780,6 +810,7 @@ mod tests {
                 Released => Event::HotkeyReleased(now),
                 CancelPressed | ShortcutPressed => Event::CancelPressed,
                 Interrupted => Event::HotkeyInterrupted,
+                Resynced => Event::HotkeyResynced,
                 Failed => Event::HotkeyFailed,
                 // Only a supervisor sends it, never the adapter.
                 dictation_ports::HotkeyEvent::Restored => continue,

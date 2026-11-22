@@ -173,18 +173,24 @@ impl HotkeyMatcher {
     /// are the modifiers really down now.
     ///
     /// A hold of a modifier-only spec whose modifiers `held` still shows
-    /// down goes on: no release was missed, the person is still holding the
-    /// key (#364: a tap the system disabled for a moment cancelled a held
-    /// recording). Anything else may have lost a press or release, so the
-    /// matcher forgets every key and reports
-    /// [`HotkeyEvent::Interrupted`]. A spec with a key can't tell whether
-    /// the key came up while events were missed, so it is interrupted too.
-    pub fn on_resync(&mut self, held: Held) -> Option<HotkeyEvent> {
+    /// down goes on, reported as [`HotkeyEvent::Resynced`] (#364: a tap the
+    /// system disabled for a moment cancelled a held recording). `held`
+    /// must name only sides the OS was sure of; the macOS listener leaves
+    /// out a modifier whose side it would have to guess. Anything else may
+    /// have lost a press or release, so the matcher forgets every key and
+    /// reports [`HotkeyEvent::Interrupted`]. A spec with a key can't tell
+    /// whether the key came up while events were missed, so it is
+    /// interrupted too.
+    ///
+    /// Esc's state is forgotten either way: its release may be among the
+    /// missed events, and then its next press must still cancel.
+    pub fn on_resync(&mut self, held: Held) -> HotkeyEvent {
+        self.escape_held = false;
         if self.active && self.spec.key().is_none() && self.check(held).0 {
-            return None;
+            return HotkeyEvent::Resynced;
         }
         self.reset();
-        Some(HotkeyEvent::Interrupted)
+        HotkeyEvent::Interrupted
     }
 
     /// Whether `held` has every modifier the spec needs (`.0`), and no
@@ -224,7 +230,7 @@ impl HotkeyMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use HotkeyEvent::{CancelPressed, Interrupted, Pressed, Released, ShortcutPressed};
+    use HotkeyEvent::{CancelPressed, Interrupted, Pressed, Released, Resynced, ShortcutPressed};
 
     const RIGHT_ALT: Held = Held::NONE.with(Modifier::Alt, Hand::Right);
 
@@ -722,10 +728,10 @@ mod tests {
     fn a_resync_that_still_shows_the_hotkey_held_keeps_the_hold() {
         let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
         assert_eq!(matcher.on_key(modifier(RIGHT_ALT, true)), Some(Pressed));
-        assert_eq!(matcher.on_resync(RIGHT_ALT), None);
+        assert_eq!(matcher.on_resync(RIGHT_ALT), Resynced);
         // Another modifier added while held doesn't matter either.
         let shift = RIGHT_ALT.with(Modifier::Shift, Hand::Left);
-        assert_eq!(matcher.on_resync(shift), None);
+        assert_eq!(matcher.on_resync(shift), Resynced);
         assert_eq!(matcher.on_key(modifier(Held::NONE, false)), Some(Released));
     }
 
@@ -735,7 +741,7 @@ mod tests {
         for held in [Held::NONE, left] {
             let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
             matcher.on_key(modifier(RIGHT_ALT, true));
-            assert_eq!(matcher.on_resync(held), Some(Interrupted), "{held:?}");
+            assert_eq!(matcher.on_resync(held), Interrupted, "{held:?}");
             // Forgotten: the next hold is a new press.
             assert_eq!(matcher.on_key(modifier(RIGHT_ALT, true)), Some(Pressed));
         }
@@ -744,7 +750,7 @@ mod tests {
     #[test]
     fn a_resync_outside_a_hold_still_reports_interrupted() {
         let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
-        assert_eq!(matcher.on_resync(RIGHT_ALT), Some(Interrupted));
+        assert_eq!(matcher.on_resync(RIGHT_ALT), Interrupted);
         // Held through the resync without a press seen: no hold to keep,
         // and the key's next press (after a release) works.
         assert_eq!(matcher.on_key(modifier(Held::NONE, false)), None);
@@ -758,6 +764,31 @@ mod tests {
         let ctrl = Held::NONE.with(Modifier::Ctrl, Hand::Left);
         let mut matcher = HotkeyMatcher::new("Ctrl+Space".parse().unwrap());
         assert_eq!(matcher.on_key(key(ctrl, Key::Space, true)), Some(Pressed));
-        assert_eq!(matcher.on_resync(ctrl), Some(Interrupted));
+        assert_eq!(matcher.on_resync(ctrl), Interrupted);
+    }
+
+    /// Review r1: Esc went down before the recording and came up while the
+    /// tap was off. Its next press is a press, not a repeat: it cancels.
+    #[test]
+    fn a_resync_forgets_escape() {
+        for spec_held in [true, false] {
+            let mut matcher = HotkeyMatcher::new("RightAlt".parse().unwrap());
+            assert_eq!(
+                matcher.on_key(key(Held::NONE, Key::Escape, true)),
+                Some(CancelPressed)
+            );
+            assert_eq!(matcher.on_key(modifier(RIGHT_ALT, true)), Some(Pressed));
+            // Esc's release is lost; the resync keeps or ends the hold.
+            let held = if spec_held { RIGHT_ALT } else { Held::NONE };
+            matcher.on_resync(held);
+            if !spec_held {
+                matcher.on_key(modifier(RIGHT_ALT, true));
+            }
+            assert_eq!(
+                matcher.on_key(key(RIGHT_ALT, Key::Escape, true)),
+                Some(CancelPressed),
+                "spec held: {spec_held}"
+            );
+        }
     }
 }

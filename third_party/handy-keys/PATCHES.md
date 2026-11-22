@@ -59,6 +59,11 @@ All in `src/platform/macos/listener.rs` unless noted.
    (`CallbackCtx::session_flags`), so its test gives it fixed flags and a
    modifier held on the real keyboard while the gate runs can't fail it
    (#156).
+   **Sure sides only** (#364). A resync leaves out both sides of any
+   modifier group whose flags carry no side bits (`resync_from`): those
+   sides are only the tracked guess, and the app keeps a side-specific
+   hold (Right Option) through a resync only when the OS says that side is
+   still down.
 5. `src/types/hotkey.rs`: `KeyEvent::resync(modifiers)` and
    `KeyEvent::is_resync()`. A resync has no key and no changed modifier,
    which no other macOS event has. `HotkeyManager` needs no change: it
