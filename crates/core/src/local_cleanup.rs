@@ -30,8 +30,18 @@ pub const CONTEXT_TOKENS: u32 = 4096;
 /// `cleanup::TIMEOUT`). The user message is `cleanup::user_message`, the
 /// same as the eval's.
 /// PR #326 measured 0.52 s median, 1.35 s p90 and 4.7 s worst on an M4 Pro;
-/// slower Macs need more, and a dictation must never stall for long.
-pub const TIMEOUT: Duration = Duration::from_secs(4);
+/// slower Macs need more.
+///
+/// 12 s (LAT3, owner decision 2026-11-22: optimise the Voice Arena score
+/// now, revisit the user experience later). Voice Arena listens 4 s after a
+/// clip and then waits until the text has been unchanged for 2 s, up to 30
+/// s, and speed is not part of ZER. In the REL2 VM run, Gemma 4 E2B passed
+/// the old 4 s budget on 108 of 151 clips, so most drafts were pasted raw;
+/// offline it lifts OrukQwen from about 59 to 72 ZER. The pipeline's
+/// deadline is the only limit on the helper request (its client has no
+/// whole-request timeout), so this is the one place that moves. The cloud
+/// deadline is `cleanup::TIMEOUT`.
+pub const TIMEOUT: Duration = Duration::from_secs(12);
 
 /// The most tokens the reply may have: half the transcript's length in
 /// characters plus 100, as the eval capped it (`len(raw) // 2 + 100`).
@@ -62,6 +72,11 @@ mod tests {
         );
         assert!(SYSTEM_PROMPT.starts_with("You clean up dictated speech-to-text transcripts."));
         assert!(SYSTEM_PROMPT.ends_with("Return only the cleaned transcript."));
+    }
+
+    #[test]
+    fn the_on_device_budget_is_twelve_seconds() {
+        assert_eq!(TIMEOUT, Duration::from_secs(12));
     }
 
     #[test]
