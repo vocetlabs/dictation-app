@@ -50,6 +50,8 @@ impl DraftsFile {
     }
 }
 
+/// Creates `dir` (0700) if needed; an existing one, made by hand or before
+/// this check, is tightened to 0700 too. Its parents are left as they are.
 fn create_private_dir(dir: &Path) -> io::Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
@@ -58,7 +60,15 @@ fn create_private_dir(dir: &Path) -> io::Result<()> {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    builder.create(dir)
+    builder.create(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if fs::metadata(dir)?.permissions().mode() & 0o777 != 0o700 {
+            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -118,6 +128,10 @@ mod tests {
         let file = DraftsFile::new(&path);
         file.append("x").unwrap();
         assert_eq!(mode(&path), 0o600);
+        assert_eq!(mode(path.parent().unwrap()), 0o700);
+        // An existing folder open to others is tightened too.
+        fs::set_permissions(path.parent().unwrap(), fs::Permissions::from_mode(0o755)).unwrap();
+        file.append("z").unwrap();
         assert_eq!(mode(path.parent().unwrap()), 0o700);
         // A file opened to others (a copy, a backup) is made private again.
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();

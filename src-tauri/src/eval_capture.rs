@@ -34,18 +34,64 @@ pub fn drafts(_data_dir: &Path) -> Option<DraftLog> {
 mod tests {
     use super::*;
 
+    /// The features listed in the manifest's `[features]` table under
+    /// `default`, however the array is laid out (one line or several).
+    fn default_features(manifest: &str) -> Vec<String> {
+        let mut in_features = false;
+        let mut value = String::new();
+        let mut collecting = false;
+        for line in manifest.lines() {
+            let line = line.split('#').next().unwrap_or("").trim();
+            if line.starts_with('[') && !collecting {
+                in_features = line == "[features]";
+                continue;
+            }
+            if !in_features {
+                continue;
+            }
+            if !collecting {
+                let Some((key, rest)) = line.split_once('=') else {
+                    continue;
+                };
+                if key.trim() != "default" {
+                    continue;
+                }
+                collecting = true;
+                value.push_str(rest);
+            } else {
+                value.push_str(line);
+            }
+            if value.contains(']') {
+                break;
+            }
+        }
+        value
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn default_features_reads_one_line_and_multi_line_arrays() {
+        let one = "[package]\nname = \"x\"\n\n[features]\ndefault = [\"a\", \"eval-capture\"]\n";
+        assert_eq!(default_features(one), ["a", "eval-capture"]);
+        let multi = "[features]\ndefault = [\n  \"a\",\n  # a note\n  \"eval-capture\",\n]\nother = [\"b\"]\n";
+        assert_eq!(default_features(multi), ["a", "eval-capture"]);
+        let none = "[features]\neval-capture = []\n[dependencies]\ndefault = \"not a feature\"\n";
+        assert!(default_features(none).is_empty());
+    }
+
     /// The feature is never on unless asked for: not a default feature, and
     /// nothing that builds a release or the DMG passes it.
     #[test]
     fn eval_capture_is_off_by_default_and_never_in_a_release() {
         let manifest = include_str!("../Cargo.toml");
-        let default = manifest
-            .lines()
-            .map(str::trim)
-            .find(|line| line.starts_with("default"));
+        let defaults = default_features(manifest);
         assert!(
-            default.is_none_or(|line| !line.contains("eval-capture")),
-            "eval-capture must not be a default feature: {default:?}"
+            !defaults.iter().any(|f| f == "eval-capture"),
+            "eval-capture must not be a default feature: {defaults:?}"
         );
         assert!(manifest.contains("eval-capture = []"), "the feature exists");
         for (name, text) in [
