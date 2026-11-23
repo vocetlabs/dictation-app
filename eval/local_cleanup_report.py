@@ -10,10 +10,32 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import sys
+
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 
 def cell(v, fmt="{}"):
     return "–" if v is None else fmt.format(v)
+
+
+def load_summary(run_dir: pathlib.Path) -> dict:
+    """summary.json, with the counts added if it predates them (from results.csv, else marked unknown)."""
+    s = json.loads((run_dir / "summary.json").read_text())
+    if "skipped_drafts" in s:
+        return s
+    results = run_dir / "results.csv"
+    if results.exists():
+        import csv
+
+        import local_cleanup_screen as screen
+
+        with results.open(newline="", encoding="utf-8") as fh:
+            s.update(screen.counts(list(csv.DictReader(fh))))
+    else:
+        s.update(skipped_drafts=0, asked=s.get("asked", s["clips"]), blank_replies="?", request_failures="?")
+    return s
 
 
 def main() -> None:
@@ -26,12 +48,14 @@ def main() -> None:
     print("| Model (label) | Size | Licence | Guard fallbacks of asked (blank replies, failed requests) | Changed | Cleanup p50 / p95 (ms) | "
           "First token p50 (ms) | Load (s) | Peak RSS (MB) | Judge ZER (AMEND) |")
     print("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+    runs_seen: list[dict] = []
     for c in cands:
         for variant_dir, suffix in ((c["label"], ""), (c["label"] + "-muesli", " (Muesli framing)")):
             p = a.runs / variant_dir / "summary.json"
             if not p.exists():
                 continue
-            s = json.loads(p.read_text())
+            s = load_summary(a.runs / variant_dir)
+            runs_seen.append(s)
             j = judge.get(variant_dir)
             zer = f"{j[0]} ({j[1]})" if j else "–"
             print(f"| {c['name']}{suffix} (`{variant_dir}`) | {s['model_bytes'] / 1e9:.2f} GB | {c['licence']} | "
@@ -43,9 +67,8 @@ def main() -> None:
     for c in cands:
         if c.get("downloaded_for_lcl1"):
             print(f"| `{c['file']}` | `{c['sha256']}` | {'yes' if c.get('deleted_after_sha256_check') else 'no'} |")
-    skipped = sum(json.loads((a.runs / c["label"] / "summary.json").read_text()).get("skipped_drafts", 0)
-                  for c in cands if (a.runs / c["label"] / "summary.json").exists())
-    print(f"\nSkipped (blank) drafts across the runs: {skipped}.")
+    skipped = sum(r['skipped_drafts'] for r in runs_seen)  # every run in the table, Muesli runs included
+    print(f"\nSkipped (blank) drafts across the {len(runs_seen)} runs above: {skipped}.")
 
 
 if __name__ == "__main__":

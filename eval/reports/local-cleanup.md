@@ -57,7 +57,7 @@ text. Times are the cleanup request, in ms, over the 151 requests.
 | `granite-4.0-1b-Q4_K_M.gguf` | `22ec0f9cc99a90185312de3c882c84e7bd6789bdd050389844380a01a831d7f1` | yes |
 | `gemma-3-270m-it-Q4_K_M.gguf` | `b1baabd6b729e4041822220d3e648e00d99cac5df86b10dffb77bcccf0688e39` | yes |
 
-Skipped (blank) drafts across the runs: 0.
+Skipped (blank) drafts across the 15 runs above, Muesli runs included: 0.
 
 - **Granite 4.0 1B** answered every request (151 blank replies, no request failed) but with only `!` characters
   under this Metal build, so the guard refused all 151 and its row is not a result. Its 1.3 s p50 is the cost of
@@ -76,7 +76,7 @@ Skipped (blank) drafts across the runs: 0.
 ## Reproduce
 
 ```sh
-export DRAFTS=<oruk.csv>
+export DRAFTS="$HOME/path/to/oruk.csv"
 eval/local_cleanup_run.sh -d "<dir with the GGUFs>" -d "<dir with downloads>"   # all candidates
 VARIANT=muesli eval/local_cleanup_run.sh -d "<dir>" qwen3-1.7b qwen3-4b gemma4-e2b
 python3 eval/local_cleanup_report.py --candidates eval/local_cleanup_candidates.json \

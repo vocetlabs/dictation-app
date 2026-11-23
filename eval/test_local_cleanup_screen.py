@@ -124,6 +124,25 @@ class ScreenTests(unittest.TestCase):
                           c["guard_fallbacks"]), (1, 4, 1, 1, 2))
         self.assertEqual(c["changed_share"], 0.25)
 
+    def test_report_migrates_a_summary_from_before_the_counts(self):
+        import csv
+        import json
+
+        import local_cleanup_report as report
+
+        with tempfile.TemporaryDirectory() as t:
+            run = pathlib.Path(t)
+            (run / "summary.json").write_text(json.dumps({"clips": 2, "asked": 1, "reasons": {"empty": 2}}))
+            with (run / "results.csv").open("w", newline="") as fh:
+                w = csv.DictWriter(fh, ["raw_text", "reason", "transcript"])
+                w.writeheader()
+                w.writerow({"raw_text": "", "reason": "empty", "transcript": ""})
+                w.writerow({"raw_text": "hi", "reason": "empty", "transcript": "hi"})
+            got = report.load_summary(run)
+            self.assertEqual((got["skipped_drafts"], got["asked"], got["blank_replies"]), (1, 1, 1))
+            (run / "results.csv").unlink()
+            self.assertEqual(report.load_summary(run)["blank_replies"], "?")
+
 
 if __name__ == "__main__":
     unittest.main()
