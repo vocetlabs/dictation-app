@@ -27,11 +27,16 @@ fail() {
 # entitlements_json <code>: the signed entitlements as sorted compact JSON,
 # so that names and values are compared. Fails on a read error or no result.
 entitlements_json() {
-  local xml json
+  local xml
   xml=$(codesign -d --entitlements :- "$1" 2>/dev/null) || return 1
   [ -n "$xml" ] || return 1
-  json=$(plutil -convert json -o - - <<<"$xml" 2>/dev/null) || return 1
-  jq -cS . <<<"$json"
+  plist_json <<<"$xml"
+}
+
+# plist_json: a property list on stdin as sorted compact JSON (python3's
+# plistlib, so it runs wherever python3 does, not only on macOS).
+plist_json() {
+  python3 -I -c 'import json, plistlib, sys; print(json.dumps(plistlib.loads(sys.stdin.buffer.read()), sort_keys=True, separators=(",", ":")))'
 }
 
 [ -f "$helper" ] || fail "no on-device cleanup helper at Contents/MacOS/llama-server"
@@ -45,7 +50,7 @@ helper_authority=$(sed -n 's/^Authority=//p' <<<"$helper_details" | head -1)
   fail "the helper is signed by '${helper_authority:-nobody}', the app by '${app_authority:-nobody}'"
 grep -q '^CodeDirectory .*flags=[^ ]*runtime' <<<"$helper_details" ||
   fail "the helper is not signed with the hardened runtime"
-want=$(plutil -convert json -o - "$expected" | jq -cS .) || fail "could not read $expected"
+want=$(plist_json <"$expected") || fail "could not read $expected"
 [ -n "$want" ] && [ "$want" != "{}" ] || fail "$expected has no entitlements"
 have=$(entitlements_json "$helper") || fail "could not read the helper's entitlements"
 [ -n "$have" ] || fail "the helper has no entitlements"

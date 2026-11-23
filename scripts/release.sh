@@ -150,7 +150,7 @@ cd "$(git rev-parse --show-toplevel)"
 # --- Checks that need no secret -------------------------------------------
 
 conf=src-tauri/tauri.conf.json
-for tool in jq git npm security codesign shasum hdiutil plutil; do
+for tool in jq git npm security codesign shasum hdiutil python3; do
   command -v "$tool" >/dev/null || die "$tool is not installed"
 done
 [ "$(uname -s)" = Darwin ] || die "releases are built on macOS"
@@ -455,11 +455,16 @@ signature_details() { codesign -dvvv "$1" 2>&1 || true; }
 # entitlements_json <code>: the signed entitlements as sorted compact JSON, so
 # names and values are compared; fails on a read error or no result.
 entitlements_json() {
-  local xml json
+  local xml
   xml=$(codesign -d --entitlements :- "$1" 2>/dev/null) || return 1
   [ -n "$xml" ] || return 1
-  json=$(plutil -convert json -o - - <<<"$xml" 2>/dev/null) || return 1
-  jq -cS . <<<"$json"
+  plist_json <<<"$xml"
+}
+
+# plist_json: a property list on stdin as sorted compact JSON (python3's
+# plistlib, so it runs wherever python3 does, not only on macOS).
+plist_json() {
+  python3 -I -c 'import json, plistlib, sys; print(json.dumps(plistlib.loads(sys.stdin.buffer.read()), sort_keys=True, separators=(",", ":")))'
 }
 
 # check_code_signature <path>: the one signature all the app's code must
@@ -471,7 +476,7 @@ check_code_signature() {
   grep -qxF "Authority=$identity" <<<"$details" || die "$code is not signed \"$identity\""
   grep -q '^CodeDirectory .*flags=[^ ]*runtime' <<<"$details" ||
     die "$code is not signed with the hardened runtime"
-  want=$(plutil -convert json -o - "$ENTITLEMENTS" | jq -cS .) || die "could not read $ENTITLEMENTS"
+  want=$(plist_json <"$ENTITLEMENTS") || die "could not read $ENTITLEMENTS"
   [ -n "$want" ] && [ "$want" != "{}" ] || die "$ENTITLEMENTS has no entitlements"
   have=$(entitlements_json "$code") || die "could not read the entitlements of $code"
   [ -n "$have" ] || die "$code has no entitlements"
