@@ -24,14 +24,18 @@ on your Mac with nothing leaving it.
   OpenRouter's credits page, and a dictation that fails for lack of credits
   offers the same. Pasting a key still works. Groq and OpenAI keys are no
   longer used.
-- **Zero-data-retention cleanup.** The cleanup request asks OpenRouter for
-  hosts that keep no data and do not train on it. If none is available, you
-  get the plain transcript. Zero retention is only certain if you also turn
-  on "ZDR only" in your OpenRouter privacy settings.
+- **Zero-data-retention routing for cleanup.** The cleanup request tells
+  OpenRouter to use only hosts with zero data retention that do not train on
+  your text. OpenRouter applies that as a routing policy, subject to its own
+  rules and your account's retention setting, so turn on "ZDR only" in your
+  OpenRouter privacy settings to be sure. If no such host is available you
+  get the plain transcript. Speech is transcribed by a separate route, which
+  has no zero-retention option. The privacy policy has the details.
 - **On this Mac.** A new choice in Speech that runs both models on your Mac:
   OrukQwen 1.7B for speech and Gemma 4 E2B for cleanup. One download of about
-  4.4 GB, with one progress bar. Your speech and text stay on the Mac. It is
-  a choice, not the default.
+  4.4 GB, with one progress bar. Your audio and the text you dictate stay on
+  the Mac. (Usage and error reports are on by default, with no audio or text;
+  turn them off in Settings, Privacy.) It is a choice, not the default.
 - **Setup in four steps.** Welcome, Speech, Permissions, Try it. The first
   screen says "By continuing, you agree to the Terms and Privacy Policy" and
   nothing is reported before you press Get started. Setup comes back to the
@@ -56,14 +60,14 @@ on your Mac with nothing leaving it.
 ### Known limits
 
 - Mac only. Windows comes later.
-- Do not press other keys while you hold the dictation key. If you do, the
-  recording is dropped without a message
+- With a modifier-only dictation key (the default, right Option), pressing a
+  letter or another non-modifier key while you hold it drops the recording
+  without a message
   (https://github.com/vocetlabs/dictation-app/issues/315).
 - A long dictation on a model on your Mac can take a while, and has no time
   limit yet (https://github.com/vocetlabs/dictation-app/issues/316).
 - Recordings stop after 5 minutes.
-- On a slower Mac the 3 second cleanup deadline passes more often, and you
-  get the plain transcript more often
+- If cleanup takes longer than 3 seconds, you get the plain transcript
   (https://github.com/vocetlabs/dictation-app/issues/374).
 - If the on-device engine crashes, Vocet does not report it, because a crash
   report could contain what you said. If Vocet quits on its own, tell us in a

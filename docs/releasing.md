@@ -118,7 +118,8 @@ or written to a file. See `docs/privacy.md` for the project settings to turn on.
    It builds the release signed by the configured identity (see "Signing, in
    one place"), reads the two Keychain items into the build's environment only
    (filtered from its output, never written anywhere), checks the app's
-   signature, hardened runtime and entitlements, checks the DMG
+   signature, hardened runtime and entitlements (and the same for the
+   `llama-server` helper next to it), checks the DMG
    (`scripts/check-dmg.sh`), notarises and staples if the identity is a Developer
    ID, checks that the updater bundle and the DMG hold that same signed app,
    verifies the updater bundle's `.sig` against the public key in
@@ -217,19 +218,22 @@ If Apple says an agreement is missing, accept the latest one at
 
 ### 3. A test signing run
 
-Nothing here publishes anything. On a clean checkout of `main`, with the version
-that is in `tauri.conf.json`, and with your own identity in place of the example:
+Nothing here publishes anything to GitHub (no `--publish`), but the second
+command does submit the app and the DMG to Apple. On a clean checkout of `main`,
+with the version that is in `tauri.conf.json` (the script refuses any other),
+and with your own identity in place of the example:
 
 ```sh
+VERSION=$(jq -r .version src-tauri/tauri.conf.json)   # 0.2.0 for this release
 export RELEASE_IDENTITY="Developer ID Application: Your Name (ABCDE12345)"
-scripts/release.sh 0.1.0 --notes "Test signing run." --no-notarize   # signing only
-scripts/release.sh 0.1.0 --notes "Test signing run."                 # and Apple's notarisation
+scripts/release.sh "$VERSION" --notes "Test signing run." --no-notarize   # signing only
+scripts/release.sh "$VERSION" --notes "Test signing run."                 # and Apple's notarisation
 unset RELEASE_IDENTITY
 ```
 
 The first command stops within minutes if the certificate or a build setting is
 wrong, without sending anything to Apple. The second sends the app and the DMG to
-Apple, which only records that it checked them. macOS may ask once to let
+Apple, which only records that it checked them; nothing goes to GitHub. macOS may ask once to let
 `codesign` use the new key: choose **Always Allow**.
 
 If Apple refuses something, the script prints Apple's list of problems. Paste
@@ -241,14 +245,14 @@ The script has done these checks already. Running them yourself once shows what
 "good" looks like:
 
 ```sh
-cd target/release-out/v0.1.0
-hdiutil attach Vocet_0.1.0_aarch64.dmg -nobrowse -mountpoint /tmp/vocet-dmg
+cd "target/release-out/v$VERSION"
+hdiutil attach "Vocet_${VERSION}_aarch64.dmg" -nobrowse -mountpoint /tmp/vocet-dmg
 codesign -dvv /tmp/vocet-dmg/Vocet.app 2>&1 | grep -E 'Authority|TeamIdentifier|flags'  # your name, your team, runtime
 xcrun stapler validate /tmp/vocet-dmg/Vocet.app                                         # The validate action worked!
 spctl --assess --type execute --verbose=2 /tmp/vocet-dmg/Vocet.app                      # source=Notarized Developer ID
 hdiutil detach /tmp/vocet-dmg
-xcrun stapler validate Vocet_0.1.0_aarch64.dmg
-spctl --assess --type open --context context:primary-signature --verbose=2 Vocet_0.1.0_aarch64.dmg
+xcrun stapler validate "Vocet_${VERSION}_aarch64.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=2 "Vocet_${VERSION}_aarch64.dmg"
 ```
 
 Then the real test. Put the DMG somewhere a browser would download from and
@@ -280,7 +284,7 @@ The last box of #206, a quarantined notarised DMG opening with no `xattr` step, 
 checked in the VM by `tests/e2e/scenarios/e2e_notarized_dmg_first_launch.sh`:
 
 ```sh
-E2E_NOTARIZED_DMG=/path/to/Vocet_0.1.0_aarch64.dmg tests/e2e/run.sh e2e_notarized_dmg_first_launch
+E2E_NOTARIZED_DMG=/path/to/Vocet_0.2.0_aarch64.dmg tests/e2e/run.sh e2e_notarized_dmg_first_launch
 ```
 
 It reads only that DMG, is optional (skipped without the path) and never runs in CI.

@@ -15,13 +15,14 @@ text:
 
 - **OpenRouter** (the default): an internet connection and an OpenRouter account (you
   pay OpenRouter for what you use; Connect OpenRouter makes the key). Your speech goes through OpenRouter to
-  OpenAI for transcription, and the text to a cleanup model (with "ZDR only" on in your OpenRouter account it is a zero-data-retention host). Vocet has no server
+  OpenAI for transcription, and the text to a cleanup model. Cleanup asks OpenRouter for zero-data-retention hosts only, a routing policy that depends on OpenRouter's rules and your account's settings, so also turn on "ZDR only" in your OpenRouter privacy settings. Speech goes by a separate route. Vocet has no server
   of its own that receives it (policy: vocetlabs.com/privacy).
 - **On this Mac**: one download (about 4.4 GB: English speech recognition,
   then a cleanup model that adds punctuation and removes fillers). It needs
-  Apple silicon, like the rest of Vocet. Your speech then stays on the Mac. It
-  is a choice in setup, not the default. On a slower Mac the 3 second cleanup
-  deadline passes more often, and you get the plain transcript.
+  Apple silicon, like the rest of Vocet. Your audio and the text you dictate
+  then stay on the Mac (usage and error reports are on by default, without
+  audio or text; see "Privacy"). It is a choice in setup, not the default. If
+  cleanup takes longer than 3 seconds, you get the plain transcript.
 
 ## 1. Install
 
@@ -131,7 +132,7 @@ menu offers the fix (for example **Open Microphone settings…**).
 
 Change the key with **Settings > Dictation**. Password fields are skipped on
 purpose: nothing is pasted there. If a dictation didn't get pasted, find it in
-**History…** and copy it. Don't press other keys while you hold the key (see
+**History…** and copy it. Don't press letters or other non-modifier keys while you hold a modifier key (see
 "Known limits").
 
 If nothing happens, see "Something went wrong" below.
@@ -172,7 +173,7 @@ and install it over the old app, as in section 1.
 ## Privacy
 
 - **Your words.** With **On this Mac**, your speech is turned into text on the
-  Mac and not sent anywhere. With **OpenRouter**, it goes through OpenRouter.
+  Mac, and your audio and dictated text are not sent anywhere. With **OpenRouter**, it goes through OpenRouter.
   Your history stays on this Mac. Audio stays in memory.
 - **Usage and error events (random install ID) are on by default.** Turn them off with
   **Share usage and error events** in Settings > Privacy. Reports start when you
@@ -241,7 +242,8 @@ public issue; see [SECURITY.md](../SECURITY.md).
 The same list is in the [changelog](../CHANGELOG.md).
 
 - Apple Silicon Macs only, macOS 13 or newer. Windows comes later.
-- **Don't press other keys while you hold the dictation key.** If you do, the
+- **With a modifier-only dictation key (the default, right Option), don't
+  press a letter or other non-modifier key while you hold it.** If you do, the
   recording is dropped without a message
   ([#315](https://github.com/vocetlabs/dictation-app/issues/315)).
 - A long dictation on an on-device model can take a while, and has no time

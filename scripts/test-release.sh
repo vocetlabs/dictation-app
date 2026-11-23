@@ -101,6 +101,9 @@ cat >"$stubs/codesign" <<'STUB'
 echo "codesign $*" >>"$STUB_CALLS/codesign"
 path=${*: -1}
 authority=${FAKE_AUTHORITY:-dictation-app Dev}
+helper=
+case $path in */llama-server) helper=1 ;; esac
+[ -z "$helper" ] || [ "${FAKE_WRONG_WHERE:-}" != helper ] || authority="Someone Else"
 cdhash=abc123
 where=build
 case $path in
@@ -118,14 +121,15 @@ case " $* " in
     if [ -n "${FAKE_ADHOC:-}" ]; then echo "Signature=adhoc" >&2; else
       flags='0x10000(runtime)'
       [ -z "${FAKE_NO_RUNTIME:-}" ] || flags='0x0(none)'
+      [ -z "$helper" ] || [ -z "${FAKE_HELPER_NO_RUNTIME:-}" ] || flags='0x0(none)'
       printf 'Executable=x\nCodeDirectory v=20500 size=1 flags=%s hashes=1+7 location=embedded\nCDHash=%s\nAuthority=%s\n' "$flags" "$cdhash" "$authority" >&2
-      [ -n "${FAKE_NO_TIMESTAMP:-}" ] || printf 'Timestamp=Nov 6, 2026\n' >&2
+      [ -n "${FAKE_NO_TIMESTAMP:-}" ] || { [ -n "$helper" ] && [ -n "${FAKE_HELPER_NO_TIMESTAMP:-}" ]; } || printf 'Timestamp=Nov 6, 2026\n' >&2
       printf 'TeamIdentifier=not set\n' >&2
     fi
     ;;
   *" --entitlements "*)
     printf '<plist><dict><key>com.apple.security.device.audio-input</key><true/>' >&2
-    if [ -n "${FAKE_EXTRA_ENTITLEMENT:-}" ]; then
+    if [ -n "${FAKE_EXTRA_ENTITLEMENT:-}" ] || { [ -n "$helper" ] && [ -n "${FAKE_HELPER_EXTRA_ENTITLEMENT:-}" ]; }; then
       printf '<key>com.apple.security.cs.disable-library-validation</key><true/>'
     fi
     printf '<key>com.apple.security.device.audio-input</key><true/></dict></plist>\n'
@@ -296,6 +300,12 @@ fi
 b=target/release/bundle
 mkdir -p "$b/macos/Vocet.app/Contents" "$b/dmg"
 echo app >"$b/macos/Vocet.app/Contents/Info.plist"
+# The on-device cleanup helper (externalBin) next to the app's executable.
+if [ -z "${FAKE_NO_HELPER:-}" ]; then
+  mkdir -p "$b/macos/Vocet.app/Contents/MacOS"
+  printf '#!/bin/sh\n' >"$b/macos/Vocet.app/Contents/MacOS/llama-server"
+  [ -n "${FAKE_HELPER_NOT_EXECUTABLE:-}" ] || chmod +x "$b/macos/Vocet.app/Contents/MacOS/llama-server"
+fi
 tar -C "$b/macos" -cf "$b/dmg/Vocet_0.3.0_aarch64.dmg" Vocet.app
 tar -C "$b/macos" -czf "$b/macos/Vocet.app.tar.gz" Vocet.app
 version=$(jq -r .version src-tauri/tauri.conf.json)
@@ -492,6 +502,14 @@ FAKE_SIGN_VERSION=9.9.9 run_release "$VERSION" && fail "a bundle signed for anot
 grep -q 'not bound to version' "$work/out.txt" || fail "no 'not bound to version' message"
 FAKE_TAMPER=1 run_release "$VERSION" && fail "a bundle changed after signing passed"
 grep -q 'does not verify against the public key' "$work/out.txt" || fail "no message for a changed bundle"
+# The on-device cleanup helper is checked on its own (REL2 review).
+FAKE_NO_HELPER=1 run_release "$VERSION" && fail "an app with no llama-server helper passed"
+grep -q 'no on-device cleanup helper' "$work/out.txt" || fail "no missing-helper message"
+FAKE_HELPER_NOT_EXECUTABLE=1 run_release "$VERSION" && fail "a helper that is not executable passed"
+FAKE_WRONG_WHERE=helper run_release "$VERSION" && fail "a helper signed by another identity passed"
+grep -q 'llama-server is not signed' "$work/out.txt" || fail "no wrong-identity message for the helper"
+FAKE_HELPER_NO_RUNTIME=1 run_release "$VERSION" && fail "a helper without the hardened runtime passed"
+FAKE_HELPER_EXTRA_ENTITLEMENT=1 run_release "$VERSION" && fail "a helper with another entitlement passed"
 pass "a bundle signed with another key, for another version or changed after signing is refused"
 
 head=$(git -C "$repo" rev-parse HEAD)

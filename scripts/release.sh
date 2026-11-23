@@ -452,23 +452,36 @@ dmg=$(find "$bundle/dmg" -name '*.dmg' -print -quit 2>/dev/null || true)
 # fail it.
 signature_details() { codesign -dvvv "$1" 2>&1 || true; }
 
-# The one signature everything must carry: the identity, hardened runtime,
-# the entitlements in the repository and nothing else.
-check_app_signature() {
-  local app=$1 details want have
-  codesign --verify --deep --strict "$app" || die "$app's signature does not verify"
-  details=$(signature_details "$app")
-  grep -qxF "Authority=$identity" <<<"$details" || die "$app is not signed \"$identity\""
+# check_code_signature <path>: the one signature all the app's code must
+# carry: the identity, hardened runtime, the entitlements in the repository
+# and nothing else, and (Developer ID) a secure timestamp.
+check_code_signature() {
+  local code=$1 details want have
+  details=$(signature_details "$code")
+  grep -qxF "Authority=$identity" <<<"$details" || die "$code is not signed \"$identity\""
   grep -q '^CodeDirectory .*flags=[^ ]*runtime' <<<"$details" ||
-    die "$app is not signed with the hardened runtime"
+    die "$code is not signed with the hardened runtime"
   want=$(grep -o 'com\.apple\.[a-z.-]*' "$ENTITLEMENTS" | sort -u)
-  have=$(codesign -d --entitlements - "$app" 2>/dev/null | grep -o 'com\.apple\.[a-z.-]*' | sort -u || true)
+  have=$(codesign -d --entitlements - "$code" 2>/dev/null | grep -o 'com\.apple\.[a-z.-]*' | sort -u || true)
   [ "$have" = "$want" ] ||
-    die "$app's entitlements are [$(tr '\n' ' ' <<<"$have")], not the ones in $ENTITLEMENTS: [$(tr '\n' ' ' <<<"$want")]"
+    die "$code's entitlements are [$(tr '\n' ' ' <<<"$have")], not the ones in $ENTITLEMENTS: [$(tr '\n' ' ' <<<"$want")]"
   if [ "$is_developer_id" = 1 ]; then
     # Apple refuses a signature with no secure timestamp.
-    grep -q '^Timestamp=' <<<"$details" || die "$app's signature has no secure timestamp; notarisation would refuse it"
+    grep -q '^Timestamp=' <<<"$details" || die "$code's signature has no secure timestamp; notarisation would refuse it"
   fi
+}
+
+# The app and its helper: the on-device cleanup server (`llama-server`, Tauri
+# `bundle.externalBin`) is a second executable in Contents/MacOS, signed
+# separately before the app is sealed, so it is checked on its own too.
+check_app_signature() {
+  local app=$1 helper=$1/Contents/MacOS/llama-server
+  codesign --verify --deep --strict "$app" || die "$app's signature does not verify"
+  check_code_signature "$app"
+  [ -f "$helper" ] || die "$app has no on-device cleanup helper at Contents/MacOS/llama-server"
+  [ -x "$helper" ] || die "$helper is not executable"
+  codesign --verify --strict "$helper" || die "$helper's signature does not verify"
+  check_code_signature "$helper"
 }
 
 # same_signature <app> <what>: <app> is the same signed code as the built app.
