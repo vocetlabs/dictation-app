@@ -11,7 +11,7 @@ testers: short lines, no HTML).
 ## [0.2.0] — 2026-11-22
 
 Dictation that comes out ready to send: with your own OpenRouter account, or
-on your Mac with nothing leaving it.
+on your Mac, where your audio and dictated text stay.
 
 - **Cleaner text, in the cloud and on your Mac.** After your speech becomes
   text, Vocet removes filler words, false starts and stammers before it pastes.
@@ -26,11 +26,14 @@ on your Mac with nothing leaving it.
   longer used.
 - **Zero-data-retention routing for cleanup.** The cleanup request tells
   OpenRouter to use only hosts with zero data retention that do not train on
-  your text. OpenRouter applies that as a routing policy, subject to its own
-  rules and your account's retention setting, so turn on "ZDR only" in your
-  OpenRouter privacy settings to be sure. If no such host is available you
-  get the plain transcript. Speech is transcribed by a separate route, which
-  has no zero-retention option. The privacy policy has the details.
+  your text. That is a routing policy, not a guarantee: OpenRouter self-serve
+  accounts allow Safety Retention by default, so turn on "ZDR only" in your
+  OpenRouter privacy settings, and OpenRouter's published exceptions to zero
+  retention still apply
+  (https://openrouter.ai/docs/guides/features/zdr). If no such host is
+  available you get the plain transcript. Speech is transcribed by a separate
+  route, which has no zero-retention option. The privacy policy has the
+  details.
 - **On this Mac.** A new choice in Speech that runs both models on your Mac:
   OrukQwen 1.7B for speech and Gemma 4 E2B for cleanup. One download of about
   4.4 GB, with one progress bar. Your audio and the text you dictate stay on

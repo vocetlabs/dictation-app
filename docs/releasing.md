@@ -126,8 +126,10 @@ or written to a file. See `docs/privacy.md` for the project settings to turn on.
    `tauri.conf.json` and that it is bound to the version, and writes everything into
    `target/release-out/v0.2.0/`: the DMG, `…app.tar.gz` and its `.sig`,
    `latest.json`, `README.md` (this repo's `docs/TESTERS.md`),
-   `THIRD-PARTY-LICENSES.txt` and `SHA256SUMS`. Nothing is uploaded. macOS may
-   ask once to let `security` read the two Keychain items.
+   `THIRD-PARTY-LICENSES.txt` and `SHA256SUMS`. Nothing goes to GitHub, but with a
+   Developer ID the dry run does submit the app and the DMG to Apple for
+   notarisation (`--no-notarize` skips that). macOS may ask once to let
+   `security` read the two Keychain items.
 
 3. To publish, run it again with `--publish`. Do not create the tag yourself:
 

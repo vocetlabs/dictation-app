@@ -128,11 +128,15 @@ case " $* " in
     fi
     ;;
   *" --entitlements "*)
-    printf '<plist><dict><key>com.apple.security.device.audio-input</key><true/>' >&2
+    # The real `codesign -d --entitlements :-`: the plist on stdout.
+    [ -z "$helper" ] || [ -z "${FAKE_HELPER_ENT_EMPTY:-}" ] || exit 0
+    value=true
+    [ -z "$helper" ] || [ -z "${FAKE_HELPER_ENT_FALSE:-}" ] || value=false
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>com.apple.security.device.audio-input</key><%s/>' "$value"
     if [ -n "${FAKE_EXTRA_ENTITLEMENT:-}" ] || { [ -n "$helper" ] && [ -n "${FAKE_HELPER_EXTRA_ENTITLEMENT:-}" ]; }; then
       printf '<key>com.apple.security.cs.disable-library-validation</key><true/>'
     fi
-    printf '<key>com.apple.security.device.audio-input</key><true/></dict></plist>\n'
+    printf '</dict></plist>\n'
     ;;
 esac
 exit 0
@@ -510,6 +514,10 @@ FAKE_WRONG_WHERE=helper run_release "$VERSION" && fail "a helper signed by anoth
 grep -q 'llama-server is not signed' "$work/out.txt" || fail "no wrong-identity message for the helper"
 FAKE_HELPER_NO_RUNTIME=1 run_release "$VERSION" && fail "a helper without the hardened runtime passed"
 FAKE_HELPER_EXTRA_ENTITLEMENT=1 run_release "$VERSION" && fail "a helper with another entitlement passed"
+FAKE_HELPER_ENT_FALSE=1 run_release "$VERSION" && fail "a helper with audio-input=false passed"
+grep -q "entitlements are" "$work/out.txt" || fail "no wrong-entitlement-value message"
+FAKE_HELPER_ENT_EMPTY=1 run_release "$VERSION" && fail "a helper whose entitlements could not be read passed"
+grep -q 'could not read the entitlements' "$work/out.txt" || fail "no unreadable-entitlements message"
 pass "a bundle signed with another key, for another version or changed after signing is refused"
 
 head=$(git -C "$repo" rev-parse HEAD)
@@ -652,6 +660,13 @@ no_build "a profile that doesn't work"
 keychain_untouched "a profile that doesn't work"
 pass "notarisation without a working credential stops with a clear message before the build and the Keychain"
 
+conf_for "$DEVID" vocet-notary
+# A helper without a secure timestamp would be refused by Apple: refuse it first.
+(
+  export FAKE_IDENTITIES="$devid_listed" FAKE_AUTHORITY="$DEVID" FAKE_HELPER_NO_TIMESTAMP=1
+  run_release "$VERSION"
+) && fail "a helper without a secure timestamp passed a Developer ID release"
+grep -q 'llama-server.*no secure timestamp' "$work/out.txt" || fail "no helper timestamp message"
 # 6g. The switches.
 conf_for "" vocet-notary
 run_release "$VERSION" --notarize && fail "--notarize passed with the dev certificate"
@@ -689,3 +704,32 @@ grep -q "^gh release create v$VERSION " "$calls/gh" || fail "a notarised publish
 [ "$(wc -l <"$calls/notary-submitted" | tr -d ' ')" = 2 ] || fail "a notarised publish skipped notarising"
 no_credential_shown "notarised publish"
 pass "--notarize needs a Developer ID, --no-notarize is dry-run only, and --publish reads only the merged configuration"
+
+# 7. check-helper.sh (used by check-dmg.sh) runs for real against a fake app
+# and the stub codesign: it passes a good helper and refuses each bad one.
+helper_app=$work/helper-check/Vocet.app
+mkdir -p "$helper_app/Contents/MacOS"
+printf '#!/bin/sh\n' >"$helper_app/Contents/MacOS/llama-server"
+chmod +x "$helper_app/Contents/MacOS/llama-server"
+check_helper() {
+  env PATH="$stubs:$PATH" STUB_CALLS="$calls" ENTITLEMENTS="$root/src-tauri/Entitlements.plist" \
+    "$@" bash "$root/scripts/check-helper.sh" "$helper_app" >"$work/helper-out.txt" 2>&1
+}
+rm -rf "$calls" && mkdir -p "$calls"
+check_helper FAKE_X=1 || fail "check-helper refused a good helper: $(cat "$work/helper-out.txt")"
+refuses() { # <message part> <env assignment>
+  check_helper "$2" && fail "check-helper passed: $2"
+  grep -q -- "$1" "$work/helper-out.txt" || fail "check-helper: no '$1' for $2: $(cat "$work/helper-out.txt")"
+}
+refuses 'not signed with the hardened runtime' FAKE_HELPER_NO_RUNTIME=1
+refuses 'no secure timestamp' FAKE_HELPER_NO_TIMESTAMP=1
+refuses 'signed by' FAKE_WRONG_WHERE=helper
+refuses "entitlements are" FAKE_HELPER_ENT_FALSE=1
+refuses "entitlements are" FAKE_HELPER_EXTRA_ENTITLEMENT=1
+refuses 'could not read the helper' FAKE_HELPER_ENT_EMPTY=1
+chmod -x "$helper_app/Contents/MacOS/llama-server"
+check_helper FAKE_X=1 && fail "check-helper passed a helper that is not executable"
+rm "$helper_app/Contents/MacOS/llama-server"
+check_helper FAKE_X=1 && fail "check-helper passed an app with no helper"
+grep -q 'no on-device cleanup helper' "$work/helper-out.txt" || fail "check-helper: no missing-helper message"
+pass "check-helper.sh passes a good llama-server and refuses a missing, unsigned-by-us, no-runtime, no-timestamp or wrongly entitled one"

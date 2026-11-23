@@ -15,7 +15,7 @@ text:
 
 - **OpenRouter** (the default): an internet connection and an OpenRouter account (you
   pay OpenRouter for what you use; Connect OpenRouter makes the key). Your speech goes through OpenRouter to
-  OpenAI for transcription, and the text to a cleanup model. Cleanup asks OpenRouter for zero-data-retention hosts only, a routing policy that depends on OpenRouter's rules and your account's settings, so also turn on "ZDR only" in your OpenRouter privacy settings. Speech goes by a separate route. Vocet has no server
+  OpenAI for transcription, and the text to a cleanup model. Cleanup asks OpenRouter for zero-data-retention hosts only. That is a routing policy, not a guarantee: OpenRouter self-serve accounts allow Safety Retention by default, so turn on "ZDR only" in your OpenRouter privacy settings, and OpenRouter's [published exceptions](https://openrouter.ai/docs/guides/features/zdr) still apply. Speech goes by a separate route. Vocet has no server
   of its own that receives it (policy: vocetlabs.com/privacy).
 - **On this Mac**: one download (about 4.4 GB: English speech recognition,
   then a cleanup model that adds punctuation and removes fillers). It needs
@@ -132,7 +132,8 @@ menu offers the fix (for example **Open Microphone settings…**).
 
 Change the key with **Settings > Dictation**. Password fields are skipped on
 purpose: nothing is pasted there. If a dictation didn't get pasted, find it in
-**History…** and copy it. Don't press letters or other non-modifier keys while you hold a modifier key (see
+**History…** and copy it. With a modifier-only dictation key (the default, right Option), don't press
+a letter or other non-modifier key while you hold it (see
 "Known limits").
 
 If nothing happens, see "Something went wrong" below.

@@ -150,7 +150,7 @@ cd "$(git rev-parse --show-toplevel)"
 # --- Checks that need no secret -------------------------------------------
 
 conf=src-tauri/tauri.conf.json
-for tool in jq git npm security codesign shasum hdiutil; do
+for tool in jq git npm security codesign shasum hdiutil plutil; do
   command -v "$tool" >/dev/null || die "$tool is not installed"
 done
 [ "$(uname -s)" = Darwin ] || die "releases are built on macOS"
@@ -452,6 +452,16 @@ dmg=$(find "$bundle/dmg" -name '*.dmg' -print -quit 2>/dev/null || true)
 # fail it.
 signature_details() { codesign -dvvv "$1" 2>&1 || true; }
 
+# entitlements_json <code>: the signed entitlements as sorted compact JSON, so
+# names and values are compared; fails on a read error or no result.
+entitlements_json() {
+  local xml json
+  xml=$(codesign -d --entitlements :- "$1" 2>/dev/null) || return 1
+  [ -n "$xml" ] || return 1
+  json=$(plutil -convert json -o - - <<<"$xml" 2>/dev/null) || return 1
+  jq -cS . <<<"$json"
+}
+
 # check_code_signature <path>: the one signature all the app's code must
 # carry: the identity, hardened runtime, the entitlements in the repository
 # and nothing else, and (Developer ID) a secure timestamp.
@@ -461,10 +471,11 @@ check_code_signature() {
   grep -qxF "Authority=$identity" <<<"$details" || die "$code is not signed \"$identity\""
   grep -q '^CodeDirectory .*flags=[^ ]*runtime' <<<"$details" ||
     die "$code is not signed with the hardened runtime"
-  want=$(grep -o 'com\.apple\.[a-z.-]*' "$ENTITLEMENTS" | sort -u)
-  have=$(codesign -d --entitlements - "$code" 2>/dev/null | grep -o 'com\.apple\.[a-z.-]*' | sort -u || true)
-  [ "$have" = "$want" ] ||
-    die "$code's entitlements are [$(tr '\n' ' ' <<<"$have")], not the ones in $ENTITLEMENTS: [$(tr '\n' ' ' <<<"$want")]"
+  want=$(plutil -convert json -o - "$ENTITLEMENTS" | jq -cS .) || die "could not read $ENTITLEMENTS"
+  [ -n "$want" ] && [ "$want" != "{}" ] || die "$ENTITLEMENTS has no entitlements"
+  have=$(entitlements_json "$code") || die "could not read the entitlements of $code"
+  [ -n "$have" ] || die "$code has no entitlements"
+  [ "$have" = "$want" ] || die "$code's entitlements are $have, not the ones in $ENTITLEMENTS: $want"
   if [ "$is_developer_id" = 1 ]; then
     # Apple refuses a signature with no secure timestamp.
     grep -q '^Timestamp=' <<<"$details" || die "$code's signature has no secure timestamp; notarisation would refuse it"
