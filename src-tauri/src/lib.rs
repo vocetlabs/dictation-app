@@ -53,6 +53,7 @@ pub mod commands;
 mod connect;
 pub mod diagnostics;
 pub mod engine;
+mod eval_capture;
 mod flags;
 mod history;
 mod keychain;
@@ -476,6 +477,8 @@ fn setup(app: &mut App, mut instance: Instance) -> anyhow::Result<()> {
             transcribers.clone(),
             live.cleanup().cloned(),
         ))),
+        // EVAL1: eval builds only (`--features eval-capture`).
+        drafts: eval_capture::drafts(&data_dir),
     };
     // Pipeline::spawn needs to run inside the tokio runtime Tauri owns.
     let (pipeline, ui_events) = tauri::async_runtime::block_on(async {

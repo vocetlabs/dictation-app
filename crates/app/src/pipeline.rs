@@ -49,6 +49,7 @@ use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tokio::task::{self, JoinError, JoinHandle, JoinSet};
 use tokio::time::{Interval, MissedTickBehavior};
 
+use crate::eval_capture::DraftLog;
 use crate::ui_events::{UiReceiver, UiSender, ui_channel};
 
 /// What the UI hears about.
@@ -313,6 +314,9 @@ pub struct Extras {
     pub cursor: Option<CursorReader>,
     /// Cleans each transcript before it is pasted (Q2).
     pub cleanup: Option<CleanupStep>,
+    /// EVAL1: records each dictation's raw and final text. Set only by the
+    /// shell's `eval-capture` builds (off by default, never a release).
+    pub drafts: Option<DraftLog>,
 }
 
 /// Controls a running pipeline.
@@ -376,7 +380,7 @@ impl Pipeline {
     {
         let extras = Extras {
             cursor: Some(cursor),
-            cleanup: None,
+            ..Extras::default()
         };
         Self::spawn_with(ports, extras, config)
     }
@@ -453,6 +457,7 @@ impl Pipeline {
         );
         runner.cursor = extras.cursor;
         runner.cleanup = extras.cleanup;
+        runner.drafts = extras.drafts;
         runner.meter = meter;
         runner.levels = levels_tx;
         let task = tokio::spawn(runner.run(keys, audio_failures));
@@ -846,6 +851,8 @@ struct Runner<H, T, I, P, C> {
     cursor: Option<CursorReader>,
     /// Cleans each transcript, if set (Q2).
     cleanup: Option<CleanupStep>,
+    /// Records each dictation's drafts, if set (EVAL1 eval builds only).
+    drafts: Option<DraftLog>,
     permissions: P,
     clock: Arc<C>,
     ui: UiSender,
@@ -915,6 +922,7 @@ where
             inserter: Arc::new(inserter),
             cursor: None,
             cleanup: None,
+            drafts: None,
             permissions,
             clock,
             ui,
@@ -1268,6 +1276,7 @@ where
         let transcriber = Arc::clone(&self.transcriber);
         let cursor = self.cursor.clone();
         let cleanup = self.cleanup.clone();
+        let drafts = self.drafts.clone();
         // The job waits for the audio worker's stop, then transcribes,
         // cleans up, then reads the character before the cursor.
         let task = self.jobs.spawn(async move {
@@ -1298,6 +1307,8 @@ where
             }
             tracing::debug!(job, duration = ?audio.duration(), "transcribing");
             let mut result = transcriber.transcribe(&audio).await;
+            // EVAL1 builds only: the transcript before cleanup changes it.
+            let raw = drafts.as_ref().and_then(|_| result.as_ref().ok().cloned());
             let mut outcome = None;
             if let (Ok(transcript), Some(cleanup)) = (&mut result, cleanup)
                 // Only text that would be pasted: never a dropped one.
@@ -1308,6 +1319,9 @@ where
                     *transcript = cleaned;
                 }
                 outcome = done;
+            }
+            if let (Some(drafts), Some(raw), Ok(final_text)) = (&drafts, &raw, &result) {
+                drafts.record(raw, final_text, outcome);
             }
             let preceding = match (&result, cursor) {
                 // Only when there is text to paste: nothing is read for a

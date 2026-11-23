@@ -269,6 +269,7 @@ impl Harness {
         let extras = Extras {
             cursor: None,
             cleanup: Some(CleanupStep::new(cleaner.clone()).with_timeout(timeout)),
+            ..Extras::default()
         };
         let (pipeline, ui) = Pipeline::spawn_with(ports, extras, Config::default()).unwrap();
         Self {

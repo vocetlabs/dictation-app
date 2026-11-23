@@ -118,6 +118,12 @@ adapter. Tauri is a thin layer on top.
   `DICTATION_SENTRY_DSN` sends nothing. Any new field needs an entry in
   `docs/privacy.md` and the "What's sent" list.
 - Skip pasting when a password field (Secure Input) is focused.
+- Eval builds only (EVAL1): `npm run tauri build -- --bundles app --features eval-capture` saves each
+  dictation's raw transcript, final text and cleanup outcome as one JSON line in
+  `<app data>/eval/drafts.jsonl` (0600, in a 0700 folder) for the bench in
+  [vocetlabs/dictation-bench](https://github.com/vocetlabs/dictation-bench). Never logged, no UI. The feature is
+  off by default and no release or CI build passes it (`src-tauri/src/eval_capture.rs` tests that); every other
+  build records nothing.
 - New network calls go only to the configured transcription provider, the
   update server and the usage-events host above, and to the on-device
   cleanup helper on the loopback interface (below).

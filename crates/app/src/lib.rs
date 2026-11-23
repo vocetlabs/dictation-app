@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod debug_audio;
+pub mod eval_capture;
 pub mod history;
 pub mod hotkey_setting;
 pub mod launch;

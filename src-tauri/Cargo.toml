@@ -14,6 +14,11 @@ workspace = true
 name = "dictation_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# EVAL1: save each dictation's raw and final text for the bench
+# (src/eval_capture.rs). Off by default; never passed for a release.
+eval-capture = []
+
 [build-dependencies]
 tauri-build = { workspace = true }
 
