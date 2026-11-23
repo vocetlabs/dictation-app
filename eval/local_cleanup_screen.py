@@ -14,6 +14,10 @@ max_tokens = chars/2 + 100, thinking off), apply the app's guard (eval/guard.py)
 Everything under --out holds draft or model text: it is git-ignored (eval/work/) and never committed.
 Only summary.json numbers go into the report (eval/local_cleanup_report.py).
 
+Safety: the loopback client ignores proxies and never follows redirects; the server must be the process
+this script spawned. Labels are [A-Za-z0-9._-] only; --out and the label directory must be real, private
+(0700) directories you own, and files are written 0600 without following symlinks.
+
     python3 eval/local_cleanup_screen.py --model ~/models/x.gguf --label qwen3-1.7b \\
         --drafts /path/to/oruk.csv
 
@@ -29,8 +33,10 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import socket
+import stat
 import statistics
 import subprocess
 import sys
@@ -126,9 +132,53 @@ def server_cmd(server: str, model: pathlib.Path, port: int) -> list[str]:
             "--temp", "0", "--seed", str(SEED), "--log-disable"]
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: D102 - a loopback server never redirects
+        return None
+
+
+# The loopback client: no proxy (the drafts must never leave the machine), no redirects.
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+
+
+def owns_port(pid: int, port: int) -> bool:
+    """True if the process we spawned is the one listening on the port (not another local server)."""
+    out = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                         capture_output=True, text=True).stdout.split()
+    return str(pid) in out
+
+
+LABEL = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def check_label(label: str) -> str:
+    if not LABEL.fullmatch(label) or label.startswith("."):
+        sys.exit(f"unsafe label {label!r}: use only letters, digits, '.', '_' and '-'")
+    return label
+
+
+def private_dir(path: pathlib.Path, create: bool) -> pathlib.Path:
+    """A real (not symlinked) directory we own that nobody else can read; made 0700 if absent."""
+    if create:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    st = os.lstat(path)
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
+        sys.exit(f"{path} is a symlink or not a directory")
+    if st.st_uid != os.getuid() or st.st_mode & 0o077:
+        sys.exit(f"{path} must be owned by you and private (chmod 700)")
+    return path
+
+
+def write_private(path: pathlib.Path, write) -> None:
+    """Create or truncate a 0600 file without following a symlink at its path."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
+        write(fh)
+
+
 def health_ok(port: int) -> bool:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
+        with OPENER.open(f"http://127.0.0.1:{port}/health", timeout=2) as r:
             return json.loads(r.read()).get("status") == "ok"
     except Exception:  # noqa: BLE001 - not up yet
         return False
@@ -144,7 +194,7 @@ def chat(port: int, msgs: list[dict], limit: int, timeout: float) -> tuple[str, 
     t0 = time.monotonic()
     first = None
     parts: list[str] = []
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with OPENER.open(req, timeout=timeout) as resp:
         for line in resp:
             line = line.strip()
             if not line.startswith(b"data:") or line == b"data: [DONE]":
@@ -158,12 +208,50 @@ def chat(port: int, msgs: list[dict], limit: int, timeout: float) -> tuple[str, 
     return "".join(parts), ((first or end) - t0) * 1000, (end - t0) * 1000
 
 
+def counts(results: list[dict]) -> dict:
+    """Skipped drafts, requests asked, request failures, blank replies and guard fallbacks, apart.
+
+    skipped: the draft was blank, so no request was made. asked: every other clip. request_failures: the
+    request errored or timed out (the raw text is pasted). blank_replies: the model answered but the guard
+    found nothing left (reason `empty`). guard_fallbacks: every asked clip whose reply the guard refused,
+    blank replies included, request failures not.
+    """
+    skipped = [r for r in results if not r["raw_text"].strip()]
+    asked = [r for r in results if r["raw_text"].strip()]
+    failures = [r for r in asked if r["reason"].startswith("error_")]
+    cleaned = [r for r in asked if r["reason"] == "cleaned"]
+    changed = sum(1 for r in asked if r["transcript"].strip() != r["raw_text"].strip())
+    return {
+        "skipped_drafts": len(skipped), "asked": len(asked), "request_failures": len(failures),
+        "blank_replies": sum(1 for r in asked if r["reason"] == "empty"),
+        "guard_fallbacks": len(asked) - len(cleaned) - len(failures),
+        "changed_share": round(changed / len(asked), 4) if asked else None,
+    }
+
+
+def resummarize(label_dir: pathlib.Path) -> None:
+    """Recompute the counts of an existing run from its results.csv, keeping its timing and load fields."""
+    summary = json.loads((label_dir / "summary.json").read_text(encoding="utf-8"))
+    with (label_dir / "results.csv").open(newline="", encoding="utf-8") as fh:
+        results = list(csv.DictReader(fh))
+    reasons: dict[str, int] = {}
+    for r in results:
+        # Older runs called a skipped draft `empty`, like a blank reply.
+        if r["reason"] == "empty" and not r["raw_text"].strip():
+            r["reason"] = "skipped"
+        reasons[r["reason"]] = reasons.get(r["reason"], 0) + 1
+    summary.update(counts(results), reasons=reasons)
+    write_private(label_dir / "summary.json", lambda fh: fh.write(json.dumps(summary, indent=1) + "\n"))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--model", type=pathlib.Path, required=True, help="Q4_K_M GGUF")
+    ap.add_argument("--model", type=pathlib.Path, help="Q4_K_M GGUF")
     ap.add_argument("--label", required=True)
-    ap.add_argument("--drafts", type=pathlib.Path, required=True,
+    ap.add_argument("--drafts", type=pathlib.Path,
                     help="harness CSV (clip_id, transcript, status): the OrukQwen drafts")
+    ap.add_argument("--resummarize", action="store_true",
+                    help="recompute the counts of an existing run from its results.csv; runs nothing")
     ap.add_argument("--variant", choices=["app", "muesli"], default="app")
     ap.add_argument("--prompt", type=pathlib.Path, default=APP_PROMPT)
     ap.add_argument("--out", type=pathlib.Path, default=HERE / "work" / "local-cleanup")
@@ -172,14 +260,21 @@ def main() -> None:
     ap.add_argument("--timeout", type=float, default=120.0, help="per request, seconds")
     ap.add_argument("--limit", type=int, help="first N clips (smoke test)")
     a = ap.parse_args()
+    check_label(a.label)
+    private_dir(a.out, create=not a.resummarize)
+    out_dir = a.out / a.label
+    if a.resummarize:
+        resummarize(private_dir(out_dir, create=False))
+        return
+    if not (a.model and a.drafts):
+        sys.exit("--model and --drafts are required")
+    out_dir = private_dir(out_dir, create=True)
 
     prompt = a.prompt.read_text(encoding="utf-8").strip()
     psha = hashlib.sha256(prompt.encode()).hexdigest()
     rows = list(csv.DictReader(a.drafts.open(newline="", encoding="utf-8")))
     if a.limit:
         rows = rows[: a.limit]
-    out_dir = a.out / a.label
-    out_dir.mkdir(parents=True, exist_ok=True)
     pauses: list[dict] = []
     wait_quiet(a.max_load, pauses, "start")
     load_start = load1()
@@ -199,7 +294,9 @@ def main() -> None:
     threading.Thread(target=sample, daemon=True).start()
     results = []
     try:
-        while not health_ok(port):
+        # Ready only when /health answers AND the process we spawned is alive and is the one listening on
+        # the port, so a different local server that took the port first cannot pass for ours.
+        while not (health_ok(port) and proc.poll() is None and owns_port(proc.pid, port)):
             if proc.poll() is not None:
                 sys.exit(f"llama-server exited with {proc.returncode} while loading {a.model.name}")
             if time.monotonic() - started > 180:
@@ -210,7 +307,7 @@ def main() -> None:
             raw = r["transcript"] if r.get("status") == "ok" else ""
             rec = dict(r, raw_text=raw, finalize_s="")
             if not raw.strip():
-                rec.update(transcript=raw, cleaned_text="", reason="empty", model_ms="", first_token_ms="")
+                rec.update(transcript=raw, cleaned_text="", reason="skipped", model_ms="", first_token_ms="")
             else:
                 wait_quiet(a.max_load, pauses, f"clip {i}")
                 try:
@@ -238,10 +335,12 @@ def main() -> None:
     load_end = load1()
     fields = list(rows[0].keys()) + [f for f in ["raw_text", "cleaned_text", "reason", "model_ms",
               "first_token_ms", "cleanup_model", "prompt_name", "prompt_sha"] if f not in rows[0]]
-    with (out_dir / "results.csv").open("w", newline="", encoding="utf-8") as fh:
+    def write_results(fh) -> None:
         w = csv.DictWriter(fh, fields)
         w.writeheader()
         w.writerows(results)
+
+    write_private(out_dir / "results.csv", write_results)
 
     timed = [r for r in results if r["model_ms"] != ""]
     totals = [float(r["model_ms"]) for r in timed]
@@ -249,14 +348,10 @@ def main() -> None:
     reasons: dict[str, int] = {}
     for r in results:
         reasons[r["reason"]] = reasons.get(r["reason"], 0) + 1
-    asked = [r for r in results if r["reason"] != "empty"]
-    changed = sum(1 for r in asked if r["transcript"].strip() != r["raw_text"].strip())
     summary = {
         "label": a.label, "variant": a.variant, "model_file": a.model.name,
         "model_bytes": a.model.stat().st_size, "model_sha256": sha256(a.model), "prompt_sha256": psha,
-        "clips": len(results), "asked": len(asked), "reasons": reasons,
-        "guard_fallbacks": sum(v for k, v in reasons.items() if k not in ("cleaned", "empty")),
-        "changed_share": round(changed / len(asked), 4) if asked else None,
+        "clips": len(results), "reasons": reasons, **counts(results),
         "total_ms_p50": round(statistics.median(totals)) if totals else None,
         "total_ms_p95": round(percentile(totals, 0.95)) if totals else None,
         "total_ms_max": round(max(totals)) if totals else None,
@@ -266,7 +361,7 @@ def main() -> None:
         "load_avg_start": round(load_start, 2), "load_avg_end": round(load_end, 2),
         "pauses": pauses, "host": os.uname().machine,
     }
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
+    write_private(out_dir / "summary.json", lambda fh: fh.write(json.dumps(summary, indent=1) + "\n"))
     print(json.dumps({k: v for k, v in summary.items() if k not in ("pauses", "prompt_sha256")}))
 
 

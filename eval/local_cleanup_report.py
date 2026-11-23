@@ -23,7 +23,7 @@ def main() -> None:
     a = ap.parse_args()
     data = json.loads(a.candidates.read_text())
     cands, judge = data["candidates"], data.get("judge", {})
-    print("| Model (label) | Size | Licence | Guard fallbacks | Changed | Cleanup p50 / p95 (ms) | "
+    print("| Model (label) | Size | Licence | Guard fallbacks of asked (blank replies, failed requests) | Changed | Cleanup p50 / p95 (ms) | "
           "First token p50 (ms) | Load (s) | Peak RSS (MB) | Judge ZER (AMEND) |")
     print("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
     for c in cands:
@@ -35,9 +35,17 @@ def main() -> None:
             j = judge.get(variant_dir)
             zer = f"{j[0]} ({j[1]})" if j else "–"
             print(f"| {c['name']}{suffix} (`{variant_dir}`) | {s['model_bytes'] / 1e9:.2f} GB | {c['licence']} | "
-                  f"{s['guard_fallbacks']}/{s['asked']} | {cell(s['changed_share'], '{:.1%}')} | "
+                  f"{s['guard_fallbacks']}/{s['asked']} ({s['blank_replies']} blank, {s['request_failures']} failed) | {cell(s['changed_share'], '{:.1%}')} | "
                   f"{s['total_ms_p50']} / {s['total_ms_p95']} | {s['first_token_ms_p50']} | {s['load_s']} | "
                   f"{s['peak_rss_mb']} | {zer} |")
+    print("\n| Downloaded for LCL1 | SHA-256 (checked before each run) | Deleted after the run |")
+    print("| --- | --- | --- |")
+    for c in cands:
+        if c.get("downloaded_for_lcl1"):
+            print(f"| `{c['file']}` | `{c['sha256']}` | {'yes' if c.get('deleted_after_sha256_check') else 'no'} |")
+    skipped = sum(json.loads((a.runs / c["label"] / "summary.json").read_text()).get("skipped_drafts", 0)
+                  for c in cands if (a.runs / c["label"] / "summary.json").exists())
+    print(f"\nSkipped (blank) drafts across the runs: {skipped}.")
 
 
 if __name__ == "__main__":

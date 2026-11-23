@@ -1,5 +1,5 @@
 {
-  "_note": "LCL1 candidates. sha256 is the file's own SHA-256, equal to the Hugging Face LFS oid of that repo/file (checked 2026-11-22). Dropped: none lacked a GGUF. Smaller Gemma 4: E2B is already the smallest Gemma 4, so Gemma 3 1B stands in.",
+  "_note": "LCL1 candidates. sha256 is the file's own SHA-256, equal to the Hugging Face LFS oid of that repo/file (checked 2026-11-22). Dropped: none lacked a GGUF. Smaller Gemma 4: E2B is already the smallest Gemma 4, so Gemma 3 1B stands in. downloaded_for_lcl1: fetched for this milestone (the others were already on disk and are left in place); deleted_after_sha256_check: the file's SHA-256 matched before every run and the file was deleted after the last run.",
   "candidates": [
     {
       "label": "gemma4-e2b",
@@ -55,7 +55,9 @@
       "repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
       "file": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
       "sha256": "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83",
-      "licence": "Llama 3.2 community (restrictive)"
+      "licence": "Llama 3.2 community (restrictive)",
+      "downloaded_for_lcl1": true,
+      "deleted_after_sha256_check": true
     },
     {
       "label": "llama3.2-3b",
@@ -71,7 +73,9 @@
       "repo": "ibm-granite/granite-4.0-h-350m-GGUF",
       "file": "granite-4.0-h-350m-Q4_K_M.gguf",
       "sha256": "0a8d6a7373602fadfba274a640ba784b86cc6847f1c67f1b0a90fa2ec266b7fb",
-      "licence": "Apache-2.0"
+      "licence": "Apache-2.0",
+      "downloaded_for_lcl1": true,
+      "deleted_after_sha256_check": true
     },
     {
       "label": "granite4.0-1b",
@@ -79,7 +83,9 @@
       "repo": "ibm-granite/granite-4.0-1b-GGUF",
       "file": "granite-4.0-1b-Q4_K_M.gguf",
       "sha256": "22ec0f9cc99a90185312de3c882c84e7bd6789bdd050389844380a01a831d7f1",
-      "licence": "Apache-2.0"
+      "licence": "Apache-2.0",
+      "downloaded_for_lcl1": true,
+      "deleted_after_sha256_check": true
     },
     {
       "label": "granite4.2-3b",
@@ -95,7 +101,9 @@
       "repo": "unsloth/gemma-3-270m-it-GGUF",
       "file": "gemma-3-270m-it-Q4_K_M.gguf",
       "sha256": "b1baabd6b729e4041822220d3e648e00d99cac5df86b10dffb77bcccf0688e39",
-      "licence": "Gemma terms (restrictive)"
+      "licence": "Gemma terms (restrictive)",
+      "downloaded_for_lcl1": true,
+      "deleted_after_sha256_check": true
     }
   ],
   "judge": {
