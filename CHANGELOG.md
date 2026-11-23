@@ -8,24 +8,70 @@ testers: short lines, no HTML).
 
 ## [Unreleased]
 
-- **Terms, and a shorter setup.** The first screen now says "By continuing,
-  you agree to the Terms and Privacy Policy", and nothing is reported before
-  you press Get started. Setup has four steps (Welcome, Speech, Permissions,
-  Try it); Done on Try it ends it, and "Open Vocet when I log in" is a
-  checkbox there. The On this Mac card shows the whole download (4.4 GB), the
-  Connect OpenRouter screen is calmer, and setup comes back to the front after
-  you allow a permission in System Settings.
-- **Connect OpenRouter in one click.** Setup and Settings, Speech now have a
+## [0.2.0] — 2026-11-22
+
+Dictation that comes out ready to send: with your own OpenRouter account, or
+on your Mac with nothing leaving it.
+
+- **Cleaner text, in the cloud and on your Mac.** After your speech becomes
+  text, Vocet removes filler words, false starts and stammers before it pastes.
+  Cleanup has one 3 second deadline, the same for both: if it takes longer, or
+  its answer looks wrong, you get the plain transcript instead, so a dictation
+  is never lost.
+- **Connect OpenRouter in one click.** Setup and Settings, Speech have a
   Connect OpenRouter button: sign in at OpenRouter in your browser and Vocet
-  keeps the key in your Keychain. Add credits opens OpenRouter's credits
-  page, and a dictation that fails for lack of credits offers the same.
-  Pasting a key still works.
-- **Your own key is now an OpenRouter key.** Groq and OpenAI keys are no
-  longer used. Paste an OpenRouter key in Settings, Speech. Speech goes
-  through OpenRouter to OpenAI's gpt-4o-mini-transcribe model.
-- **Cleaner text.** With your own key, Vocet removes filler words, false
-  starts and stammers before it pastes. If the cleanup takes longer than
-  1.5 seconds or looks wrong, you get the plain transcript instead.
+  keeps the key in your Keychain. It is the default. Add credits opens
+  OpenRouter's credits page, and a dictation that fails for lack of credits
+  offers the same. Pasting a key still works. Groq and OpenAI keys are no
+  longer used.
+- **Zero-data-retention cleanup.** The cleanup request asks OpenRouter for
+  hosts that keep no data and do not train on it. If none is available, you
+  get the plain transcript. Zero retention is only certain if you also turn
+  on "ZDR only" in your OpenRouter privacy settings.
+- **On this Mac.** A new choice in Speech that runs both models on your Mac:
+  OrukQwen 1.7B for speech and Gemma 4 E2B for cleanup. One download of about
+  4.4 GB, with one progress bar. Your speech and text stay on the Mac. It is
+  a choice, not the default.
+- **Setup in four steps.** Welcome, Speech, Permissions, Try it. The first
+  screen says "By continuing, you agree to the Terms and Privacy Policy" and
+  nothing is reported before you press Get started. Setup comes back to the
+  front after you allow a permission in System Settings.
+- **Terms and privacy pages** at vocetlabs.com/terms and
+  vocetlabs.com/privacy, linked from setup and the app.
+- **Fixed: a held recording that ended early.** A recording could stop by
+  itself while you were still holding the key, and nothing was pasted
+  (https://github.com/vocetlabs/dictation-app/issues/364).
+- **The project moved** to https://github.com/vocetlabs/dictation-app. Old
+  links redirect, and updates come from there.
+- **Licence.** The source is now under the Functional Source License
+  (FSL-1.1-ALv2): you can read, run, modify and self-host it, and each
+  version becomes Apache 2.0 after two years.
+
+### Requirements
+
+- A Mac with Apple Silicon (M1 or newer), on macOS 13 (Ventura) or newer.
+- For OpenRouter: internet and an OpenRouter account with credit.
+- For On this Mac: disk space for the 4.4 GB download.
+
+### Known limits
+
+- Mac only. Windows comes later.
+- Do not press other keys while you hold the dictation key. If you do, the
+  recording is dropped without a message
+  (https://github.com/vocetlabs/dictation-app/issues/315).
+- A long dictation on a model on your Mac can take a while, and has no time
+  limit yet (https://github.com/vocetlabs/dictation-app/issues/316).
+- Recordings stop after 5 minutes.
+- On a slower Mac the 3 second cleanup deadline passes more often, and you
+  get the plain transcript more often
+  (https://github.com/vocetlabs/dictation-app/issues/374).
+- If the on-device engine crashes, Vocet does not report it, because a crash
+  report could contain what you said. If Vocet quits on its own, tell us in a
+  bug report
+  (https://github.com/vocetlabs/dictation-app/issues/226).
+- With OpenRouter, your speech goes through OpenRouter to OpenAI, and the text
+  to a cleanup model. Do not dictate anything you would not send to a cloud
+  service.
 
 ## [0.1.0] — 2026-11-18
 
@@ -91,5 +137,6 @@ testers. Thank you for trying it.
 - With your own key, your speech goes to Groq or OpenAI. Do not dictate
   anything you would not send to a cloud service.
 
-[Unreleased]: https://github.com/vocetlabs/dictation-app/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/vocetlabs/dictation-app/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/vocetlabs/dictation-app/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vocetlabs/dictation-app/releases/tag/v0.1.0

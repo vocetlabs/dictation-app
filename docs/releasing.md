@@ -64,7 +64,7 @@ entitlement only when a test fails without it.
 | Left out | Why it isn't needed |
 | --- | --- |
 | `cs.allow-jit`, `cs.allow-unsigned-executable-memory` | WKWebView's JavaScript JIT runs in Apple's own WebContent process, which has its own entitlements. Nothing in this process generates code: the on-device engine (`transcribe-cpp`) runs compiled C++ and Metal shaders, and macOS's own service compiles those. |
-| `cs.disable-library-validation` | The bundle holds exactly one executable, `Contents/MacOS/Vocet`. `transcribe-cpp` and every other native library are linked into it statically, and it links only system frameworks and `/usr/lib` (`otool -L`). No third-party library is loaded. |
+| `cs.disable-library-validation` | The bundle holds two executables in `Contents/MacOS`: `Vocet` and `llama-server`, the helper for on-device cleanup (`bundle.externalBin` in `src-tauri/tauri.macos.conf.json`, built by `scripts/build-llama-server.sh`, which checks that it links only system libraries). `transcribe-cpp` and every other native library are linked into `Vocet` statically, and it links only system frameworks and `/usr/lib` (`otool -L`). No third-party library is loaded. |
 | `cs.allow-dyld-environment-variables`, `cs.disable-executable-page-protection` | Nothing uses them. |
 | `automation.apple-events` | The app sends no Apple Events to another app. The updater's fallback for a bundle it can't write (`do shell script … with administrator privileges`) runs AppleScript inside this process. |
 | App Sandbox, `keychain-access-groups`, network, Accessibility | The app isn't sandboxed, so network and files need nothing. The key is in the login keychain, which needs no group. Accessibility and the event tap are granted by the person in System Settings (TCC), and no entitlement exists for them. |
@@ -146,8 +146,7 @@ or written to a file. See `docs/privacy.md` for the project settings to turn on.
    bump to a new one (the script's error says so).
 
 `docs/TESTERS.md` is attached to each release as its README; update it there
-when the guide changes. Publishing the first real release (0.1.0) is the
-owner's call.
+when the guide changes. Publishing a release is the owner's call.
 
 ## Developer ID: what the owner does once Apple approves the order
 

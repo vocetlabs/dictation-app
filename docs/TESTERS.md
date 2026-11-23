@@ -4,7 +4,10 @@ Hold a key, speak, let go, and your words are typed into whatever app is in
 front. Thank you for trying it. This page takes you from the DMG to your first
 dictation, and says what to send us when something goes wrong.
 
-What is in each version is in the [changelog](../CHANGELOG.md).
+What is in each version is in the [changelog](../CHANGELOG.md). **New in
+0.2.0:** cleaner text (filler words and false starts removed, with a 3 second
+deadline after which you get the plain transcript), Connect OpenRouter,
+**On this Mac** for both speech and cleanup, and a four-step setup.
 
 You need an **Apple Silicon Mac (M1 or newer; Intel Macs are not supported)**
 with **macOS 13 (Ventura) or newer**, and one of two ways to turn speech into
@@ -15,8 +18,10 @@ text:
   OpenAI for transcription, and the text to a cleanup model (with "ZDR only" on in your OpenRouter account it is a zero-data-retention host). Vocet has no server
   of its own that receives it (policy: vocetlabs.com/privacy).
 - **On this Mac**: one download (about 4.4 GB: English speech recognition,
-  then a cleanup model that adds punctuation and removes fillers). Your
-  speech then stays on the Mac. It is a choice in setup, not the default.
+  then a cleanup model that adds punctuation and removes fillers). It needs
+  Apple silicon, like the rest of Vocet. Your speech then stays on the Mac. It
+  is a choice in setup, not the default. On a slower Mac the 3 second cleanup
+  deadline passes more often, and you get the plain transcript.
 
 ## 1. Install
 
@@ -238,8 +243,7 @@ The same list is in the [changelog](../CHANGELOG.md).
 - Apple Silicon Macs only, macOS 13 or newer. Windows comes later.
 - **Don't press other keys while you hold the dictation key.** If you do, the
   recording is dropped without a message
-  ([#315](https://github.com/vocetlabs/dictation-app/issues/315); fixed
-  after 0.1.0).
+  ([#315](https://github.com/vocetlabs/dictation-app/issues/315)).
 - A long dictation on an on-device model can take a while, and has no time
   limit yet ([#316](https://github.com/vocetlabs/dictation-app/issues/316)).
 - Recordings stop after 5 minutes.
