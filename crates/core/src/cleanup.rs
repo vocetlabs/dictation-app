@@ -32,9 +32,17 @@ pub const OPEN_TAG: &str = "<transcript>";
 /// Closes the transcript in the user message.
 pub const CLOSE_TAG: &str = "</transcript>";
 
-/// How long a cleanup may take, from the transcript to the reply, before
-/// the raw transcript is pasted and the request cancelled.
-pub const TIMEOUT: Duration = Duration::from_millis(1_500);
+/// How long a cleanup, cloud or on-device, may take, from the transcript to
+/// the reply, before the raw transcript is pasted and the request cancelled.
+/// One deadline for both (LAT4, owner decision 2026-11-22). Cloud (LAT2): an
+/// offline replay of 151 saved drafts pinned to Together scored ZER 86.1 with
+/// no deadline against 83.4 at 1.5 s, and its replies had p50 0.66 s, p90
+/// 1.35 s, max 2.66 s; live p95 was 1.33 s. On-device: Gemma 4 E2B on an M4
+/// Pro (LCL1, 151 drafts) took at most 2.80 s. Slower Macs paste raw text a
+/// little more often (#374). The helper request has no whole-request timeout
+/// of its own; this is the generation deadline (the shared HTTP client keeps
+/// its 10 s connect timeout).
+pub const TIMEOUT: Duration = Duration::from_millis(3_000);
 
 /// A reply longer than this many times the transcript (plus
 /// [`LENGTH_SLACK`] characters) is not a cleanup.
@@ -577,10 +585,10 @@ mod tests {
     }
 
     #[test]
-    fn judgements_have_names_and_the_timeout_is_a_second_and_a_half() {
+    fn judgements_have_names_and_the_timeout_is_three_seconds() {
         assert_eq!(Judgement::DroppedNumber.name(), "dropped_number");
         assert_eq!(Judgement::Accepted.name(), "accepted");
-        assert_eq!(TIMEOUT, Duration::from_millis(1_500));
+        assert_eq!(TIMEOUT, Duration::from_millis(3_000));
         assert_eq!(PROMPT_NAME, "v4");
     }
 }

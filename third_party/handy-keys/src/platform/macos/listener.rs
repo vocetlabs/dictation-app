@@ -208,6 +208,23 @@ fn after_flags_changed(tracked: Modifiers, changed: Modifiers, flags: CGEventFla
     held
 }
 
+/// Patched (dictation-app, #364): a resync of `modifiers`, the state
+/// reconciled from `flags`, with both sides left out of any group that
+/// `flags` hold without side bits. Those sides are only the tracked guess
+/// ([`modifiers_from_flags`]); a consumer that keeps a side-specific hold
+/// through a resync must not take a guess for a key still down (Right
+/// Option may have come up while Left stayed down).
+fn resync_from(modifiers: Modifiers, flags: CGEventFlags) -> KeyEvent {
+    let mut sure = modifiers;
+    for group in &MODIFIER_GROUPS {
+        let sided = flags.0 & (group.left_device | group.right_device) != 0;
+        if flags.contains(group.mask) && !sided {
+            sure.remove(group.left | group.right);
+        }
+    }
+    KeyEvent::resync(sure)
+}
+
 /// Context handed to the event tap callback through the refcon pointer.
 ///
 /// `tap` is filled in right after `CGEventTapCreate` returns. The callback and
@@ -282,11 +299,11 @@ unsafe extern "C-unwind" fn event_tap_callback(
             // Patched (dictation-app, #156): through the same seam as the key
             // and mouse path, so a test can give it fixed flags instead of
             // the live keyboard's.
-            state.current_modifiers =
-                modifiers_from_flags(state.current_modifiers, (ctx.session_flags)());
+            let session = (ctx.session_flags)();
+            state.current_modifiers = modifiers_from_flags(state.current_modifiers, session);
             let _ = state
                 .event_sender
-                .send(KeyEvent::resync(state.current_modifiers));
+                .send(resync_from(state.current_modifiers, session));
         }
         return event.as_ptr();
     }
@@ -311,13 +328,15 @@ unsafe extern "C-unwind" fn event_tap_callback(
         // they still show the tracked modifiers held, the event is not a
         // sign of anything missed.
         if event_type != CGEventType::FlagsChanged {
-            let mut reconciled = modifiers_from_flags(state.current_modifiers, flags);
+            let mut source = flags;
+            let mut reconciled = modifiers_from_flags(state.current_modifiers, source);
             if reconciled != state.current_modifiers {
-                reconciled = modifiers_from_flags(state.current_modifiers, (ctx.session_flags)());
+                source = (ctx.session_flags)();
+                reconciled = modifiers_from_flags(state.current_modifiers, source);
             }
             if reconciled != state.current_modifiers {
                 state.current_modifiers = reconciled;
-                let _ = state.event_sender.send(KeyEvent::resync(reconciled));
+                let _ = state.event_sender.send(resync_from(reconciled, source));
             }
         }
 
@@ -408,8 +427,9 @@ unsafe extern "C-unwind" fn event_tap_callback(
                 };
                 if (before ^ after) & !explained != Modifiers::empty() {
                     // The missed changes alone; this key's comes next.
-                    let _ = state.event_sender.send(KeyEvent::resync(
+                    let _ = state.event_sender.send(resync_from(
                         (after & !explained) | (before & explained),
+                        flags,
                     ));
                 }
                 state.current_modifiers = after;
@@ -1209,6 +1229,45 @@ mod dictation_patch_tests {
             // Its modifiers come from the host's real keyboard state, which
             // this test doesn't control, so they aren't checked.
         }
+    }
+
+    /// #364 review r1: the session holds Option without side bits. The
+    /// tracked Right is only a guess, so the resync leaves Option out and a
+    /// Right Option hold isn't kept through it; with side bits, it shows.
+    #[test]
+    fn a_resync_leaves_out_a_modifier_without_sides() {
+        fn session_option_no_sides() -> CGEventFlags {
+            CGEventFlags(CGEventFlags::MaskAlternate.0)
+        }
+        for (session, expected) in [
+            (
+                session_option_no_sides as fn() -> CGEventFlags,
+                Modifiers::empty(),
+            ),
+            (session_right_option_held, Modifiers::OPT_RIGHT),
+        ] {
+            let cb = Callback::with_session(Modifiers::empty(), session);
+            cb.flags_changed(alt(RIGHT_OPT_DEVICE), RIGHT_OPTION);
+            let events = cb.deliver(CGEventType::TapDisabledByTimeout, NONE, 0);
+            assert_eq!(events.len(), 1, "{events:?}");
+            assert!(events[0].is_resync());
+            assert_eq!(events[0].modifiers, expected);
+            // The tracked state keeps its guess for later events.
+            assert_eq!(
+                cb.ctx.state.lock().unwrap().current_modifiers,
+                Modifiers::OPT_RIGHT
+            );
+        }
+    }
+
+    #[test]
+    fn resync_from_keeps_sided_groups_and_drops_unsided_ones() {
+        let both = Modifiers::OPT_RIGHT | Modifiers::SHIFT_LEFT;
+        let flags =
+            CGEventFlags(CGEventFlags::MaskAlternate.0 | CGEventFlags::MaskShift.0 | 0x0000_0002);
+        assert_eq!(resync_from(both, flags).modifiers, Modifiers::SHIFT_LEFT);
+        let sided = CGEventFlags(flags.0 | RIGHT_OPT_DEVICE);
+        assert_eq!(resync_from(both, sided).modifiers, both);
     }
 
     #[test]

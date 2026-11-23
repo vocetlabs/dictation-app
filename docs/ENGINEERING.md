@@ -156,7 +156,7 @@ the helper also can't take the app down.
   cleaner uses it while the helper runs, else the cloud engine's. Q2's
   cleanup step does the rest for both: the guard (here against prompt v3),
   the finished-reply check, and the deadline, which is the cleaner's own
-  `local_cleanup::TIMEOUT` (slower Macs need more than the cloud's): a
+  `cleanup::TIMEOUT` (3 s, the same as the cloud's, LAT4): a
   late request is dropped, which closes its connection and stops the
   generation, and the raw transcript is pasted.
 
@@ -269,7 +269,7 @@ the helper also can't take the app down.
 - **Cleanup** (Q2): after transcription and before the paste, the text goes
   to the cleanup model with the prompt in `crates/core/prompts/cleanup.txt`
   (the eval harness reads the same file). The reply is pasted only if the
-  guard (`dictation_core::cleanup::judge`) accepts it; a timeout (1.5 s,
+  guard (`dictation_core::cleanup::judge`) accepts it; a timeout (3 s,
   `dictation_core::cleanup::TIMEOUT`, the request is cancelled), an error or
   a refused reply pastes the raw transcript.
 

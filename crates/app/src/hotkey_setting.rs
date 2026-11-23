@@ -195,7 +195,9 @@ impl Delivery {
                 self.swallow_release = false;
                 true
             }
-            HotkeyEvent::CancelPressed | HotkeyEvent::ShortcutPressed => paused,
+            HotkeyEvent::CancelPressed | HotkeyEvent::ShortcutPressed | HotkeyEvent::Resynced => {
+                paused
+            }
             _ => false,
         }
     }
@@ -217,10 +219,11 @@ impl Delivery {
                     self.dead = true;
                 }
                 // Esc and a shortcut say nothing about whether the hotkey
-                // is down (its release still comes), and a source doesn't
-                // restore itself.
+                // is down (its release still comes), a resync keeps it
+                // down, and a source doesn't restore itself.
                 HotkeyEvent::CancelPressed
                 | HotkeyEvent::ShortcutPressed
+                | HotkeyEvent::Resynced
                 | HotkeyEvent::Restored => {}
             }
             self.send(event);
@@ -236,6 +239,7 @@ impl Delivery {
                 // business.
                 HotkeyEvent::CancelPressed
                 | HotkeyEvent::ShortcutPressed
+                | HotkeyEvent::Resynced
                 | HotkeyEvent::Restored => {}
             }
         }

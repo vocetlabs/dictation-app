@@ -21,7 +21,7 @@ and field, and what stays on your Mac. If the two ever disagree, fix both.
   [ZDR page](https://openrouter.ai/docs/features/zdr) says self-serve accounts
   allow it by default, so zero retention holds only if the user turns on "ZDR
   only" in their OpenRouter privacy settings. If no such host
-  answers in 1.5 seconds, nothing is cleaned and the transcript is pasted as it
+  answers in 3 seconds, nothing is cleaned and the transcript is pasted as it
   came. Your key stays in your macOS Keychain and is sent only to OpenRouter.
 - **Connect OpenRouter:** the button sends you to `openrouter.ai` in your
   browser to sign in. Vocet sends nothing about you in that flow: the

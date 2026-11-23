@@ -4,8 +4,8 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
+use dictation_core::cleanup;
 use dictation_core::coordinator::Phase::Idle;
-use dictation_core::local_cleanup;
 use dictation_core::settings::Settings;
 use dictation_pipeline::pipeline::{CleanupStep, Config, Extras, Pipeline, Ports, UiEvent};
 use dictation_platform::fakes::{
@@ -344,7 +344,7 @@ async fn a_local_dictation_pastes_the_cleaned_text_and_the_raw_text_on_a_helper_
     assert_eq!(pasted, [RAW]);
     let waited = started.elapsed();
     assert!(
-        waited >= local_cleanup::TIMEOUT && waited < local_cleanup::TIMEOUT * 3,
+        waited >= cleanup::TIMEOUT && waited < cleanup::TIMEOUT * 3,
         "{waited:?}"
     );
     // Criterion 2: the timed-out inference was cancelled (its request
@@ -357,7 +357,7 @@ async fn a_local_dictation_pastes_the_cleaned_text_and_the_raw_text_on_a_helper_
     assert_eq!(outcomes, [CleanupOutcome::Applied]);
     assert_eq!(pasted, [CLEANED]);
     assert!(
-        started.elapsed() < local_cleanup::TIMEOUT,
+        started.elapsed() < cleanup::TIMEOUT,
         "{:?}",
         started.elapsed()
     );

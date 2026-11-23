@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use dictation_core::audio_math::{self, Verdict};
 use dictation_core::cleanup::{self as cleanup_rules, Judgement};
-use dictation_core::coordinator::{Phase, State, step};
+use dictation_core::coordinator::{Phase, RecordingEnd, State, recording_end, step};
 use dictation_core::diagnostics::ErrorCode;
 use dictation_core::error::DictationError;
 use dictation_core::events::{Command, Event};
@@ -934,7 +934,7 @@ where
 
     async fn run(mut self, mut keys: Keys, mut audio_failures: mpsc::Receiver<StartFailed>) {
         loop {
-            let recording = matches!(self.state, State::Recording { .. });
+            let recording = self.state.phase() == Phase::Recording;
             let metering = recording && self.meter.is_some();
             // Biased, in this order: shutdown wins over anything else that
             // is ready; audio failures and job results, at most a few per
@@ -962,6 +962,9 @@ where
                 _ = self.ticks.tick(), if recording => self.feed(Event::Tick(self.clock.now())),
                 _ = self.level_ticks.tick(), if metering => self.publish_level(),
             }
+        }
+        if self.state.phase() == Phase::Recording {
+            tracing::info!(reason = ?RecordingEnd::Shutdown, "recording ended");
         }
         self.jobs.abort_all();
         self.hotkey.stop();
@@ -993,10 +996,16 @@ where
             self.ui.send(UiEvent::HotkeyRestored);
             return;
         }
+        let recording = self.state.phase() == Phase::Recording;
         if let Some(event) = self.key_event(key, at) {
             self.feed(event);
         }
-        if matches!(self.state, State::Recording { .. }) && self.tick_due().await {
+        // Esc and a shortcut on the hotkey's modifier both cancel: say
+        // which one did (#364).
+        if recording && key != HotkeyEvent::Released && self.state.phase() != Phase::Recording {
+            tracing::info!(hotkey = ?key, "a hotkey event ended the recording");
+        }
+        if self.state.phase() == Phase::Recording && self.tick_due().await {
             self.feed(Event::Tick(self.clock.now()));
         }
     }
@@ -1045,8 +1054,7 @@ where
     /// The microphone permission was missing when the recording started.
     /// Only the current recording, still running, hears about it.
     fn start_failed(&self, failed: &StartFailed) -> Option<Event> {
-        let current =
-            failed.session == self.session && matches!(self.state, State::Recording { .. });
+        let current = failed.session == self.session && self.state.phase() == Phase::Recording;
         if !current {
             tracing::debug!(error = %failed.error, "dropping a stale start failure");
             return None;
@@ -1081,6 +1089,7 @@ where
             // pasted; outside a recording it changes nothing.
             HotkeyEvent::CancelPressed | HotkeyEvent::ShortcutPressed => Event::CancelPressed,
             HotkeyEvent::Interrupted => Event::HotkeyInterrupted,
+            HotkeyEvent::Resynced => Event::HotkeyResynced,
             HotkeyEvent::Failed => Event::HotkeyFailed,
             HotkeyEvent::Restored => return None,
         })
@@ -1195,6 +1204,10 @@ where
     fn feed(&mut self, event: Event) {
         self.pending.push_back(event);
         while let Some(event) = self.pending.pop_front() {
+            // Why a recording ends, at info, so a bench run shows it (#364).
+            if let Some(reason) = recording_end(self.state, &event) {
+                tracing::info!(?reason, "recording ended");
+            }
             let (state, commands) = step(self.state, event.clone());
             tracing::debug!(?event, ?commands, "step");
             self.state = state;
@@ -1733,7 +1746,7 @@ mod tests {
         runner.ui = ui;
         for (start, shortcut_at, release_at) in [(0, 100, 150), (1_000, 1_500, 1_700)] {
             key(&mut runner, HotkeyEvent::Pressed, start);
-            assert!(matches!(runner.state, State::Recording { .. }));
+            assert!(runner.state.phase() == Phase::Recording);
             key(&mut runner, HotkeyEvent::ShortcutPressed, shortcut_at);
             assert_eq!(runner.state, State::Idle);
             key(&mut runner, HotkeyEvent::Released, release_at);
@@ -2762,7 +2775,7 @@ mod audio_worker_tests {
             overflow: Arc::new(Overflow::default()),
         };
         runner.key(HotkeyEvent::Pressed, Duration::ZERO).await;
-        assert!(matches!(runner.state, State::Recording { .. }));
+        assert!(runner.state.phase() == Phase::Recording);
         audio.entered(1).await;
 
         // The interruption discards the recording; the overflow's cancel
@@ -2810,7 +2823,7 @@ mod audio_worker_tests {
             overflow: Arc::new(Overflow::default()),
         };
         runner.key(HotkeyEvent::Pressed, Duration::ZERO).await;
-        assert!(matches!(runner.state, State::Recording { .. }));
+        assert!(runner.state.phase() == Phase::Recording);
         for _ in 0..5 {
             keys_tx
                 .try_send((HotkeyEvent::Released, Duration::from_secs(1)))
@@ -2819,7 +2832,7 @@ mod audio_worker_tests {
 
         // No key dropped: nothing is discarded and the recording goes on.
         assert_eq!(runner.keys_overflowed(&mut keys), None);
-        assert!(matches!(runner.state, State::Recording { .. }));
+        assert!(runner.state.phase() == Phase::Recording);
         assert!(keys.rx.try_recv().is_ok(), "the queue was left alone");
 
         // A key was dropped: the other four go too, and the recording ends.
@@ -2851,7 +2864,7 @@ mod audio_worker_tests {
             tokio::time::interval(Duration::from_millis(1)),
         );
         runner.key(HotkeyEvent::Pressed, Duration::ZERO).await;
-        assert!(matches!(runner.state, State::Recording { .. }));
+        assert!(runner.state.phase() == Phase::Recording);
 
         clock.advance(dictation_core::coordinator::MAX_RECORDING);
         tokio::time::sleep(Duration::from_millis(5)).await;
