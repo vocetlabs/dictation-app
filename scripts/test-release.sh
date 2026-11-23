@@ -101,6 +101,9 @@ cat >"$stubs/codesign" <<'STUB'
 echo "codesign $*" >>"$STUB_CALLS/codesign"
 path=${*: -1}
 authority=${FAKE_AUTHORITY:-dictation-app Dev}
+helper=
+case $path in */llama-server) helper=1 ;; esac
+[ -z "$helper" ] || [ "${FAKE_WRONG_WHERE:-}" != helper ] || authority="Someone Else"
 cdhash=abc123
 where=build
 case $path in
@@ -118,17 +121,22 @@ case " $* " in
     if [ -n "${FAKE_ADHOC:-}" ]; then echo "Signature=adhoc" >&2; else
       flags='0x10000(runtime)'
       [ -z "${FAKE_NO_RUNTIME:-}" ] || flags='0x0(none)'
+      [ -z "$helper" ] || [ -z "${FAKE_HELPER_NO_RUNTIME:-}" ] || flags='0x0(none)'
       printf 'Executable=x\nCodeDirectory v=20500 size=1 flags=%s hashes=1+7 location=embedded\nCDHash=%s\nAuthority=%s\n' "$flags" "$cdhash" "$authority" >&2
-      [ -n "${FAKE_NO_TIMESTAMP:-}" ] || printf 'Timestamp=Nov 6, 2026\n' >&2
+      [ -n "${FAKE_NO_TIMESTAMP:-}" ] || { [ -n "$helper" ] && [ -n "${FAKE_HELPER_NO_TIMESTAMP:-}" ]; } || printf 'Timestamp=Nov 6, 2026\n' >&2
       printf 'TeamIdentifier=not set\n' >&2
     fi
     ;;
   *" --entitlements "*)
-    printf '<plist><dict><key>com.apple.security.device.audio-input</key><true/>' >&2
-    if [ -n "${FAKE_EXTRA_ENTITLEMENT:-}" ]; then
+    # The real `codesign -d --entitlements :-`: the plist on stdout.
+    [ -z "$helper" ] || [ -z "${FAKE_HELPER_ENT_EMPTY:-}" ] || exit 0
+    value=true
+    [ -z "$helper" ] || [ -z "${FAKE_HELPER_ENT_FALSE:-}" ] || value=false
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>com.apple.security.device.audio-input</key><%s/>' "$value"
+    if [ -n "${FAKE_EXTRA_ENTITLEMENT:-}" ] || { [ -n "$helper" ] && [ -n "${FAKE_HELPER_EXTRA_ENTITLEMENT:-}" ]; }; then
       printf '<key>com.apple.security.cs.disable-library-validation</key><true/>'
     fi
-    printf '<key>com.apple.security.device.audio-input</key><true/></dict></plist>\n'
+    printf '</dict></plist>\n'
     ;;
 esac
 exit 0
@@ -296,6 +304,12 @@ fi
 b=target/release/bundle
 mkdir -p "$b/macos/Vocet.app/Contents" "$b/dmg"
 echo app >"$b/macos/Vocet.app/Contents/Info.plist"
+# The on-device cleanup helper (externalBin) next to the app's executable.
+if [ -z "${FAKE_NO_HELPER:-}" ]; then
+  mkdir -p "$b/macos/Vocet.app/Contents/MacOS"
+  printf '#!/bin/sh\n' >"$b/macos/Vocet.app/Contents/MacOS/llama-server"
+  [ -n "${FAKE_HELPER_NOT_EXECUTABLE:-}" ] || chmod +x "$b/macos/Vocet.app/Contents/MacOS/llama-server"
+fi
 tar -C "$b/macos" -cf "$b/dmg/Vocet_0.3.0_aarch64.dmg" Vocet.app
 tar -C "$b/macos" -czf "$b/macos/Vocet.app.tar.gz" Vocet.app
 version=$(jq -r .version src-tauri/tauri.conf.json)
@@ -492,6 +506,18 @@ FAKE_SIGN_VERSION=9.9.9 run_release "$VERSION" && fail "a bundle signed for anot
 grep -q 'not bound to version' "$work/out.txt" || fail "no 'not bound to version' message"
 FAKE_TAMPER=1 run_release "$VERSION" && fail "a bundle changed after signing passed"
 grep -q 'does not verify against the public key' "$work/out.txt" || fail "no message for a changed bundle"
+# The on-device cleanup helper is checked on its own (REL2 review).
+FAKE_NO_HELPER=1 run_release "$VERSION" && fail "an app with no llama-server helper passed"
+grep -q 'no on-device cleanup helper' "$work/out.txt" || fail "no missing-helper message"
+FAKE_HELPER_NOT_EXECUTABLE=1 run_release "$VERSION" && fail "a helper that is not executable passed"
+FAKE_WRONG_WHERE=helper run_release "$VERSION" && fail "a helper signed by another identity passed"
+grep -q 'llama-server is not signed' "$work/out.txt" || fail "no wrong-identity message for the helper"
+FAKE_HELPER_NO_RUNTIME=1 run_release "$VERSION" && fail "a helper without the hardened runtime passed"
+FAKE_HELPER_EXTRA_ENTITLEMENT=1 run_release "$VERSION" && fail "a helper with another entitlement passed"
+FAKE_HELPER_ENT_FALSE=1 run_release "$VERSION" && fail "a helper with audio-input=false passed"
+grep -q "entitlements are" "$work/out.txt" || fail "no wrong-entitlement-value message"
+FAKE_HELPER_ENT_EMPTY=1 run_release "$VERSION" && fail "a helper whose entitlements could not be read passed"
+grep -q 'could not read the entitlements' "$work/out.txt" || fail "no unreadable-entitlements message"
 pass "a bundle signed with another key, for another version or changed after signing is refused"
 
 head=$(git -C "$repo" rev-parse HEAD)
@@ -634,6 +660,13 @@ no_build "a profile that doesn't work"
 keychain_untouched "a profile that doesn't work"
 pass "notarisation without a working credential stops with a clear message before the build and the Keychain"
 
+conf_for "$DEVID" vocet-notary
+# A helper without a secure timestamp would be refused by Apple: refuse it first.
+(
+  export FAKE_IDENTITIES="$devid_listed" FAKE_AUTHORITY="$DEVID" FAKE_HELPER_NO_TIMESTAMP=1
+  run_release "$VERSION"
+) && fail "a helper without a secure timestamp passed a Developer ID release"
+grep -q 'llama-server.*no secure timestamp' "$work/out.txt" || fail "no helper timestamp message"
 # 6g. The switches.
 conf_for "" vocet-notary
 run_release "$VERSION" --notarize && fail "--notarize passed with the dev certificate"
@@ -671,3 +704,32 @@ grep -q "^gh release create v$VERSION " "$calls/gh" || fail "a notarised publish
 [ "$(wc -l <"$calls/notary-submitted" | tr -d ' ')" = 2 ] || fail "a notarised publish skipped notarising"
 no_credential_shown "notarised publish"
 pass "--notarize needs a Developer ID, --no-notarize is dry-run only, and --publish reads only the merged configuration"
+
+# 7. check-helper.sh (used by check-dmg.sh) runs for real against a fake app
+# and the stub codesign: it passes a good helper and refuses each bad one.
+helper_app=$work/helper-check/Vocet.app
+mkdir -p "$helper_app/Contents/MacOS"
+printf '#!/bin/sh\n' >"$helper_app/Contents/MacOS/llama-server"
+chmod +x "$helper_app/Contents/MacOS/llama-server"
+check_helper() {
+  env PATH="$stubs:$PATH" STUB_CALLS="$calls" ENTITLEMENTS="$root/src-tauri/Entitlements.plist" \
+    "$@" bash "$root/scripts/check-helper.sh" "$helper_app" >"$work/helper-out.txt" 2>&1
+}
+rm -rf "$calls" && mkdir -p "$calls"
+check_helper FAKE_X=1 || fail "check-helper refused a good helper: $(cat "$work/helper-out.txt")"
+refuses() { # <message part> <env assignment>
+  check_helper "$2" && fail "check-helper passed: $2"
+  grep -q -- "$1" "$work/helper-out.txt" || fail "check-helper: no '$1' for $2: $(cat "$work/helper-out.txt")"
+}
+refuses 'not signed with the hardened runtime' FAKE_HELPER_NO_RUNTIME=1
+refuses 'no secure timestamp' FAKE_HELPER_NO_TIMESTAMP=1
+refuses 'signed by' FAKE_WRONG_WHERE=helper
+refuses "entitlements are" FAKE_HELPER_ENT_FALSE=1
+refuses "entitlements are" FAKE_HELPER_EXTRA_ENTITLEMENT=1
+refuses 'could not read the helper' FAKE_HELPER_ENT_EMPTY=1
+chmod -x "$helper_app/Contents/MacOS/llama-server"
+check_helper FAKE_X=1 && fail "check-helper passed a helper that is not executable"
+rm "$helper_app/Contents/MacOS/llama-server"
+check_helper FAKE_X=1 && fail "check-helper passed an app with no helper"
+grep -q 'no on-device cleanup helper' "$work/helper-out.txt" || fail "check-helper: no missing-helper message"
+pass "check-helper.sh passes a good llama-server and refuses a missing, unsigned-by-us, no-runtime, no-timestamp or wrongly entitled one"

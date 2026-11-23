@@ -51,6 +51,9 @@ notice=$app/Contents/Resources/THIRD-PARTY-LICENSES.txt
 grep -q "Mozilla Public License" "$notice" || fail "the notice has no MPL-2.0 text"
 grep -q "https://crates.io/crates/selectors/" "$notice" || fail "the notice has no MPL crate source line"
 
+# The on-device cleanup helper, a second executable in the app.
+"$(dirname "$0")/check-helper.sh" "$app" || fail "the on-device cleanup helper check failed"
+
 details=$(codesign -dvv "$app" 2>&1)
 signature=$(sed -n 's/^Authority=//p' <<<"$details" | head -1)
 [ -n "$signature" ] || signature=$(sed -n 's/^Signature=//p' <<<"$details" | head -1)
