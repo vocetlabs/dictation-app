@@ -1,6 +1,6 @@
 # LCL1: small on-device cleanup models, screen (outputs and timing)
 
-Numbers only. No judging yet, so the judge column is empty. 2026-11-22, M4 Pro 24 GB, macOS 15, llama.cpp
+Numbers only. 2026-11-22, M4 Pro 24 GB, macOS 15, llama.cpp
 `llama-server` b12359 (the build Vocet pins) with Metal. Spec: `docs/history/milestones/LCL1.md`.
 
 ## Method
@@ -31,28 +31,35 @@ Fallbacks are replies the guard refused (the raw text is pasted). Changed is the
 text differs from the raw text. Times are the cleanup request, in ms, over 151 clips (150 for Granite 350M:
 one empty draft).
 
-| Model (label) | Size | Licence | Guard fallbacks | Changed | Cleanup p50 / p95 (ms) | First token p50 (ms) | Load (s) | Peak RSS (MB) | VM p50 / p95 (ms) | Judge ZER |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Gemma 4 E2B (baseline) (`gemma4-e2b`) | 3.11 GB | Apache-2.0 | 5/151 | 50.3% | 387 / 2438 | 40 | 0.64 | 3425 | – | |
-| Gemma 4 E2B (baseline) (Muesli framing) (`gemma4-e2b-muesli`) | 3.11 GB | Apache-2.0 | 4/151 | 49.7% | 411 / 2468 | 49 | 0.94 | 3255 | – | |
-| Qwen3 0.6B (`qwen3-0.6b`) | 0.40 GB | Apache-2.0 | 3/151 | 28.5% | 161 / 982 | 22 | 0.33 | 1014 | – | |
-| Qwen3 1.7B (`qwen3-1.7b`) | 1.11 GB | Apache-2.0 | 0/151 | 16.6% | 287 / 1795 | 44 | 0.43 | 1690 | – | |
-| Qwen3 1.7B (Muesli framing) (`qwen3-1.7b-muesli`) | 1.11 GB | Apache-2.0 | 0/151 | 10.6% | 319 / 1940 | 58 | 0.44 | 1690 | – | |
-| Qwen3 4B (`qwen3-4b`) | 2.50 GB | Apache-2.0 | 2/151 | 25.2% | 579 / 3678 | 104 | 0.54 | 3152 | – | |
-| Qwen3 4B (Muesli framing) (`qwen3-4b-muesli`) | 2.50 GB | Apache-2.0 | 2/151 | 36.4% | 648 / 3781 | 147 | 0.54 | 3152 | – | |
-| Gemma 3 1B (`gemma3-1b`) | 0.81 GB | Gemma terms (restrictive) | 8/151 | 37.8% | 250 / 1474 | 38 | 0.43 | 1073 | – | |
-| Phi-4 mini 3.8B (`phi4-mini`) | 2.49 GB | MIT | 4/151 | 38.4% | 534 / 3263 | 85 | 0.54 | 3106 | – | |
-| Llama 3.2 1B (`llama3.2-1b`) | 0.81 GB | Llama 3.2 community (restrictive) | 17/151 | 50.3% | 205 / 1232 | 31 | 0.43 | 1090 | – | |
-| Llama 3.2 3B (`llama3.2-3b`) | 2.02 GB | Llama 3.2 community (restrictive) | 8/151 | 42.4% | 458 / 2871 | 75 | 0.53 | 2584 | – | |
-| Granite 4.0 H 350M (`granite4.0-350m`) | 0.22 GB | Apache-2.0 | 7/150 | 26.7% | 186 / 1270 | 33 | 0.33 | 482 | – | |
-| Granite 4.0 1B (`granite4.0-1b`) | 1.02 GB | Apache-2.0 | 0/0 | – | 1347 / 4826 | 47 | 0.32 | 2558 | – | |
-| Granite 4.2 3B (`granite4.2-3b`) | 2.24 GB | Apache-2.0 | 3/151 | 24.5% | 516 / 3204 | 88 | 0.43 | 2635 | – | |
-| Gemma 3 270M (`gemma3-270m`) | 0.25 GB | Gemma terms (restrictive) | 137/144 | 4.2% | 506 / 904 | 17 | 0.53 | 683 | – | |
+| Model (label) | Size | Licence | Guard fallbacks | Changed | Cleanup p50 / p95 (ms) | First token p50 (ms) | Load (s) | Peak RSS (MB) | Judge ZER (AMEND) |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Gemma 4 E2B (baseline) (`gemma4-e2b`) | 3.11 GB | Apache-2.0 | 5/151 | 50.3% | 387 / 2438 | 40 | 0.64 | 3425 | 72.2 (0.62) |
+| Gemma 4 E2B (baseline) (Muesli framing) (`gemma4-e2b-muesli`) | 3.11 GB | Apache-2.0 | 4/151 | 49.7% | 411 / 2468 | 49 | 0.94 | 3255 | 68.9 (0.75) |
+| Qwen3 0.6B (`qwen3-0.6b`) | 0.40 GB | Apache-2.0 | 3/151 | 28.5% | 161 / 982 | 22 | 0.33 | 1014 | 55.6 (3.25) |
+| Qwen3 1.7B (`qwen3-1.7b`) | 1.11 GB | Apache-2.0 | 0/151 | 16.6% | 287 / 1795 | 44 | 0.43 | 1690 | 58.3 (1.3) |
+| Qwen3 1.7B (Muesli framing) (`qwen3-1.7b-muesli`) | 1.11 GB | Apache-2.0 | 0/151 | 10.6% | 319 / 1940 | 58 | 0.44 | 1690 | – |
+| Qwen3 4B (`qwen3-4b`) | 2.50 GB | Apache-2.0 | 2/151 | 25.2% | 579 / 3678 | 104 | 0.54 | 3152 | – |
+| Qwen3 4B (Muesli framing) (`qwen3-4b-muesli`) | 2.50 GB | Apache-2.0 | 2/151 | 36.4% | 648 / 3781 | 147 | 0.54 | 3152 | 69.5 (0.89) |
+| Gemma 3 1B (`gemma3-1b`) | 0.81 GB | Gemma terms (restrictive) | 8/151 | 37.8% | 250 / 1474 | 38 | 0.43 | 1073 | 53.6 (5.17) |
+| Phi-4 mini 3.8B (`phi4-mini`) | 2.49 GB | MIT | 4/151 | 38.4% | 534 / 3263 | 85 | 0.54 | 3106 | 62.9 (0.94) |
+| Llama 3.2 1B (`llama3.2-1b`) | 0.81 GB | Llama 3.2 community (restrictive) | 17/151 | 50.3% | 205 / 1232 | 31 | 0.43 | 1090 | – |
+| Llama 3.2 3B (`llama3.2-3b`) | 2.02 GB | Llama 3.2 community (restrictive) | 8/151 | 42.4% | 458 / 2871 | 75 | 0.53 | 2584 | – |
+| Granite 4.0 H 350M (`granite4.0-350m`) | 0.22 GB | Apache-2.0 | 7/150 | 26.7% | 186 / 1270 | 33 | 0.33 | 482 | – |
+| Granite 4.0 1B (`granite4.0-1b`) | 1.02 GB | Apache-2.0 | 0/0 | – | 1347 / 4826 | 47 | 0.32 | 2558 | – |
+| Granite 4.2 3B (`granite4.2-3b`) | 2.24 GB | Apache-2.0 | 3/151 | 24.5% | 516 / 3204 | 88 | 0.43 | 2635 | – |
+| Gemma 3 270M (`gemma3-270m`) | 0.25 GB | Gemma terms (restrictive) | 137/144 | 4.2% | 506 / 904 | 17 | 0.53 | 683 | – |
 
 - **Granite 4.0 1B** produced only `!` characters on every clip with this Metal build, so its row is not a
   result. Its 1.3 s p50 is the cost of generating a full-length degenerate reply.
 - **Gemma 3 270M** failed the guard on 137 of 151 clips (119 echoes, 14 dropped names, 4 too long, 7 empty drafts not asked), so it cannot clean.
-- The VM column stays empty until the Lead says the VM is free.
+- **Judge:** Claude Opus 5.5 through `claude -p` on the Pro plan, all 151 clips; ZER is the share of drafts
+  judged sendable, AMEND the character edits over characters. Run dirs: `dictation-bench/out/lcl1-<label>`.
+  Gemma 4 E2B with Muesli framing against the app framing, paired: 1 clip better, 6 worse. Not judged: Qwen3 4B
+  (app framing), Qwen3 1.7B Muesli, Llama 3.2 1B and 3B, Granite 4.2 3B, Granite 4.0 350M, Gemma 3 270M and
+  Granite 4.0 1B (the last two are unusable). The owner's real-Mac REL2 run of Gemma 4 E2B scored 72.2, the
+  same as the offline figure.
+- **VM timing dropped:** the 8 GB VM repeat for the top 3 was not run (decision: local cleanup is measured on a
+  real Mac only).
 
 ## Reproduce
 
@@ -67,6 +74,10 @@ python3 eval/local_cleanup_report.py --candidates eval/local_cleanup_candidates.
 Each run writes `results.csv` (harness format for the bench judge) and `summary.json` under `eval/work/`
 (git-ignored). Candidates, repos, files and SHA-256: `eval/local_cleanup_candidates.json`.
 
-## Not done yet
+## Conclusion
 
-Judge columns and the VM (8 GB, 4 cores) repeat for the top 3.
+**Keep Gemma 4 E2B with the app's prompt. No candidate qualifies under the decision rules.** Gemma 4 E2B scores
+72.2 ZER (AMEND 0.62). The closest are Qwen3 4B with Muesli framing at 69.5 (0.89), which is twice as slow
+(p50 648 ms against 387 ms), and Gemma 4 E2B with Muesli framing at 68.9 (0.75), 1 better and 6 worse than the
+app framing. The faster small models lose 14 to 19 points (Qwen3 1.7B 58.3, Qwen3 0.6B 55.6, Gemma 3 1B 53.6),
+and Phi-4 mini (62.9) loses 9 and is not faster. No judged model is within 2 points of Gemma 4 E2B and under 1 s p50.

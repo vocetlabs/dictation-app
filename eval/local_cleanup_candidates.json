@@ -97,5 +97,15 @@
       "sha256": "b1baabd6b729e4041822220d3e648e00d99cac5df86b10dffb77bcccf0688e39",
       "licence": "Gemma terms (restrictive)"
     }
-  ]
+  ],
+  "judge": {
+    "_note": "Claude Opus 5.5 via claude -p (Pro plan), all 151 clips: ZER %, AMEND %. Runs: dictation-bench/out/lcl1-<label>. Labels missing here were not judged.",
+    "gemma4-e2b": [72.2, 0.62],
+    "qwen3-1.7b": [58.3, 1.3],
+    "qwen3-0.6b": [55.6, 3.25],
+    "gemma3-1b": [53.6, 5.17],
+    "qwen3-4b-muesli": [69.5, 0.89],
+    "phi4-mini": [62.9, 0.94],
+    "gemma4-e2b-muesli": [68.9, 0.75]
+  }
 }
