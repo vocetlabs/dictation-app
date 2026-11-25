@@ -8,6 +8,19 @@ testers: short lines, no HTML).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-25
+
+Cloud cleanup now understands when you correct yourself.
+
+- **Self-corrections.** Say "let's meet at 3, sorry, 4 pm" or "invite Sam,
+  I mean Sara" and Vocet writes only what you meant: "Let's meet at 4 pm",
+  "Invite Sara". It also removes a few more filler sounds and ends a sentence
+  with a period when you forget one.
+- **"Scratch that" is safe.** If the cleaned text drops "scratch that" or
+  "never mind" but keeps what you cancelled, Vocet pastes your plain
+  transcript instead, so a cancelled instruction never reads as a real one.
+- **On this Mac.** On-device cleanup also removes "erm", "hmm" and "mm".
+
 ## [0.2.0] — 2026-11-22
 
 Dictation that comes out ready to send: with your own OpenRouter account, or
@@ -144,6 +157,7 @@ testers. Thank you for trying it.
 - With your own key, your speech goes to Groq or OpenAI. Do not dictate
   anything you would not send to a cloud service.
 
-[Unreleased]: https://github.com/vocetlabs/dictation-app/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/vocetlabs/dictation-app/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/vocetlabs/dictation-app/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/vocetlabs/dictation-app/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/vocetlabs/dictation-app/releases/tag/v0.1.0

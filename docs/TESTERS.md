@@ -5,9 +5,9 @@ front. Thank you for trying it. This page takes you from the DMG to your first
 dictation, and says what to send us when something goes wrong.
 
 What is in each version is in the [changelog](../CHANGELOG.md). **New in
-0.2.0:** cleaner text (filler words and false starts removed, with a 3 second
-deadline after which you get the plain transcript), Connect OpenRouter,
-**On this Mac** for both speech and cleanup, and a four-step setup.
+0.2.1:** cloud cleanup understands self-corrections ("let's meet at 3,
+sorry, 4 pm" becomes "Let's meet at 4 pm") and keeps a "scratch that" from
+turning into a real instruction.
 
 You need an **Apple Silicon Mac (M1 or newer; Intel Macs are not supported)**
 with **macOS 13 (Ventura) or newer**, and one of two ways to turn speech into
