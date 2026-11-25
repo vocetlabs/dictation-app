@@ -18,10 +18,10 @@ website-only PRs (#380, #381). Nothing else.
    ```
    Cloud cleanup now understands when you correct yourself.
 
-   - **Self-corrections.** Say "Tuesday, sorry, Wednesday" or "20 copies, make
-     that 30" and Vocet writes only what you meant: "Wednesday", "30 copies".
-     It also removes a few more filler sounds and ends a sentence with a
-     period when you forget one.
+   - **Self-corrections.** Say "let's meet at 3, sorry, 4 pm" or "invite Sam,
+     I mean Sara" and Vocet writes only what you meant: "Let's meet at 4 pm",
+     "Invite Sara". It also removes a few more filler sounds and ends a sentence
+     with a period when you forget one.
    - **"Scratch that" is safe.** If the cleaned text drops "scratch that" or
      "never mind" but keeps what you cancelled, Vocet pastes your plain
      transcript instead, so a cancelled instruction never reads as a real one.
