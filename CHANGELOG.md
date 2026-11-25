@@ -8,7 +8,7 @@ testers: short lines, no HTML).
 
 ## [Unreleased]
 
-## [0.2.1] — [date set at release]
+## [0.2.1] — 2026-11-25
 
 Cloud cleanup now understands when you correct yourself.
 

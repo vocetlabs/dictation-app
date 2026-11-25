@@ -12,7 +12,7 @@ website-only PRs (#380, #381). Nothing else.
 
 1. `[auto]` Version 0.2.1 in `src-tauri/tauri.conf.json`, `package.json`, `Cargo.toml` (and the lock files where
    they record the workspace version), per `docs/releasing.md`. `scripts/test-release.sh` passes.
-2. `[auto]` `CHANGELOG.md`: a `## [0.2.1] — [date set at release]` section under `[Unreleased]`, with exactly this
+2. `[auto]` `CHANGELOG.md`: a `## [0.2.1] — 2026-11-25` (the planned publish date) section under `[Unreleased]`, with exactly this
    text (plain text for testers, it becomes the release notes and the "Update available" text):
 
    ```
@@ -37,4 +37,4 @@ website-only PRs (#380, #381). Nothing else.
 
 ## Out of scope
 
-Any code change. The date in the changelog heading is set at release, as the script requires.
+Any code change. The changelog heading carries the planned publish date, set in the version PR (`docs/releasing.md` step 1).
