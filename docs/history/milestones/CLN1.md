@@ -35,6 +35,21 @@ Inputs (local, read only): `~/vocet-screens/u9/cln1-prompt-v7.txt` (the prompt, 
    (`sorry`, `wait`, `no`, `actually`, `make that`, `I mean`, `rather`, `scratch that`, `correction`, case
    insensitive, whole words), ported from `judge_relaxed`/`corrected` in the input file. Links (emails, URLs,
    file names) keep the strict rule: never dropped. All other checks and their order are unchanged.
+2b. `[auto]` `crates/core/src/cleanup.rs` `judge` gets a new verdict, `UnresolvedCancel` (pastes the raw text
+   like the other non-Cleaned verdicts), checked after the existing checks pass. It fires when, for any occurrence
+   in the raw text of a whole-clause cancel cue (`scratch that`, `never mind`/`nevermind`, `forget that`,
+   `forget it`, `ignore that`, `cancel that`, `delete that`; case insensitive, whole words) that the reply does
+   not contain:
+   (a) the last two content words before the cue (skipping `actually wait sorry no oh ok okay well`) are both
+   present in the reply, and
+   (b) no content word of the raw text is missing from the reply apart from the cue words themselves and that
+   skip list (multiset comparison).
+   Content words: lowercase word tokens (letters, digits, apostrophes; curly apostrophe normalised) minus the
+   `STOP` list of the offline prototype (`~/vocet-screens/u9/cln1-unresolved-proto.py`); number words zero to
+   twelve map to digits on both sides. If the reply still contains the cue verbatim, this check does not fire.
+   Added in round 2 (owner approved): the offline replay found replies that deleted the cue but kept the
+   cancelled words. Rust tests and `eval/guard.py` (verdict `unresolved_cancel`) mirror each other. Only the
+   verdict name is logged, never text.
 3. `[auto]` Unit tests: "20 copies, make that 30" → "30 copies" is `Cleaned`; "Email Carlos, I mean Carla" →
    "Email Carla" is `Cleaned`; "version 3.1, wait, no, 3.2" → "version 3.2" is `Cleaned`; dropping a number with
    no cue after it is still `DroppedNumber`; a number that appears twice, once uncorrected, dropped is still

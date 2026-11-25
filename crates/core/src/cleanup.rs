@@ -11,7 +11,8 @@
 //! pasted only if it says something, is not an echo of the prompt, is not
 //! much longer than the transcript, and keeps every number, email/URL/file
 //! name and capitalised name of the transcript, unless the transcript
-//! corrects it right after ("20 copies, make that 30"; CLN1). The echo check takes its
+//! corrects it right after ("20 copies, make that 30"; CLN1). It also refuses a reply
+//! that removed a cancel cue ("scratch that") but kept what it cancelled. The echo check takes its
 //! idea from Blurt (MIT, credited in `NOTICE`).
 //!
 //! The prompt is v7 (CLN1; v4 came from the offline cleanup eval, PR #327),
@@ -74,6 +75,49 @@ const CORRECTION_CUES: [&str; 9] = [
     "correction",
 ];
 
+/// Cues that cancel a whole clause, lowercase.
+const CANCEL_CUES: [&str; 8] = [
+    "scratch that",
+    "never mind",
+    "nevermind",
+    "forget that",
+    "forget it",
+    "ignore that",
+    "cancel that",
+    "delete that",
+];
+
+/// The cue words a reply may drop when it removes a cancel cue.
+const CANCEL_WORDS: [&str; 8] = [
+    "scratch",
+    "never",
+    "mind",
+    "nevermind",
+    "forget",
+    "ignore",
+    "cancel",
+    "delete",
+];
+
+/// Words that lead into a cancel cue: skipped before it, free to drop.
+const CANCEL_LEAD: [&str; 8] = [
+    "actually", "wait", "sorry", "no", "oh", "ok", "okay", "well",
+];
+
+/// Words with no content, ignored by the cancel check.
+const CANCEL_STOP: [&str; 44] = [
+    "a", "an", "the", "um", "uh", "erm", "er", "ah", "hmm", "mm", "so", "like", "you", "know", "i",
+    "me", "my", "we", "our", "us", "is", "are", "was", "were", "be", "to", "of", "in", "on", "at",
+    "for", "and", "or", "but", "it", "that", "this", "can", "could", "would", "will", "just",
+    "kind", "sort",
+];
+
+/// Number words, each at the index of its digit.
+const NUMBER_WORDS: [&str; 13] = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve",
+];
+
 /// The system prompt: [`PROMPT_FILE`] trimmed, as the eval sent it.
 #[must_use]
 pub fn prompt() -> &'static str {
@@ -111,6 +155,8 @@ pub enum Judgement {
     DroppedLink,
     /// A capitalised name of the transcript is missing.
     DroppedName,
+    /// A cancel cue is gone but the words it cancelled are all still there.
+    UnresolvedCancel,
 }
 
 impl Judgement {
@@ -125,6 +171,7 @@ impl Judgement {
             Self::DroppedNumber => "dropped_number",
             Self::DroppedLink => "dropped_link",
             Self::DroppedName => "dropped_name",
+            Self::UnresolvedCancel => "unresolved_cancel",
         }
     }
 }
@@ -165,7 +212,75 @@ pub fn judge(raw: &str, reply: &str, prompt: &str) -> Judgement {
     }) {
         return Judgement::DroppedName;
     }
+    if unresolved_cancel(raw, reply) {
+        return Judgement::UnresolvedCancel;
+    }
     Judgement::Accepted
+}
+
+/// Whether the reply removed a cancel cue ("scratch that") without applying
+/// it: the two content words before the cue are still there, and nothing but
+/// cue words and [`CANCEL_LEAD`] words is gone from the transcript. A cue the
+/// reply keeps verbatim doesn't count. Ported from `eval/guard.py`.
+fn unresolved_cancel(raw: &str, reply: &str) -> bool {
+    let raw = raw.to_lowercase();
+    let reply_lower = reply.to_lowercase();
+    let kept = content_words(reply);
+    let reply_has_cue = !cancel_cues(&reply_lower).is_empty();
+    cancel_cues(&raw).into_iter().any(|(at, cue)| {
+        if reply_has_cue && reply_lower.contains(cue) {
+            return false;
+        }
+        let mut before = content_words(&raw[..at]);
+        before.retain(|w| !CANCEL_LEAD.contains(&w.as_str()));
+        let last_two = &before[before.len().saturating_sub(2)..];
+        if last_two.is_empty() || !last_two.iter().all(|w| kept.contains(w)) {
+            return false;
+        }
+        let mut left = kept.clone();
+        content_words(&raw).iter().all(|word| {
+            if let Some(i) = left.iter().position(|w| w == word) {
+                left.swap_remove(i);
+                return true;
+            }
+            CANCEL_WORDS.contains(&word.as_str()) || CANCEL_LEAD.contains(&word.as_str())
+        })
+    })
+}
+
+/// Where each whole-word cancel cue starts in `text` (already lowercased).
+fn cancel_cues(text: &str) -> Vec<(usize, &'static str)> {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    text.char_indices()
+        .filter(|&(at, _)| !text[..at].chars().next_back().is_some_and(word))
+        .filter_map(|(at, _)| {
+            CANCEL_CUES
+                .iter()
+                .find(|cue| {
+                    text[at..]
+                        .strip_prefix(**cue)
+                        .is_some_and(|rest| !rest.chars().next().is_some_and(word))
+                })
+                .map(|&cue| (at, cue))
+        })
+        .collect()
+}
+
+/// The lowercased words of `text` (ASCII letters, digits, apostrophes) that
+/// carry content: without [`CANCEL_STOP`], number words up to twelve as
+/// digits.
+fn content_words(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .replace('\u{2019}', "'")
+        .split(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '\''))
+        .filter(|w| !w.is_empty() && !CANCEL_STOP.contains(w))
+        .map(|w| {
+            NUMBER_WORDS
+                .iter()
+                .position(|n| *n == w)
+                .map_or_else(|| w.to_owned(), |digit| digit.to_string())
+        })
+        .collect()
 }
 
 /// Whether every occurrence of `value` (a number or a name) in `raw` is
@@ -612,6 +727,85 @@ mod tests {
         assert!(!corrected("Ask Carlos, actuallyish Carla", "Carlos"));
     }
 
+    /// The cue went but the cancelled words stayed: paste the raw text
+    /// (CLN1 criterion 2b).
+    #[test]
+    fn a_cancel_cue_removed_without_cancelling_falls_back() {
+        let raw = "the meeting is on monday. the call is at eleven am. \
+                   scratch that the meeting is on thursday.";
+        for reply in [
+            "The meeting is on Monday. The call is at eleven am. The meeting is on Thursday.",
+            "The meeting is on Monday. The call is at 11 am. The meeting is on Thursday.",
+        ] {
+            assert_eq!(
+                judge(raw, reply, p()),
+                Judgement::UnresolvedCancel,
+                "{reply}"
+            );
+        }
+        // Every cue, any case, with lead words and cue words free to drop.
+        for cue in CANCEL_CUES {
+            let capital = cue[..1].to_uppercase() + &cue[1..];
+            let raw = format!("book the blue room, oh wait. {capital} book the red one");
+            assert_eq!(
+                judge(&raw, "Book the blue room. Book the red one.", p()),
+                Judgement::UnresolvedCancel,
+                "{cue}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_applied_cancellation_is_accepted() {
+        for (raw, reply) in [
+            (
+                "send it to the data team never mind to the design team",
+                "Send it to the design team.",
+            ),
+            (
+                "delete the old files. actually, never mind, keep them",
+                "Keep the old files.",
+            ),
+            (
+                "order the green chairs for the lobby, they look good with the carpet and \
+                 the new lamps, and then book the movers for friday, scratch that order the \
+                 grey chairs",
+                "Order the grey chairs.",
+            ),
+        ] {
+            assert_eq!(judge(raw, reply, p()), Judgement::Accepted, "{raw}");
+        }
+    }
+
+    #[test]
+    fn the_cancel_check_needs_a_removed_whole_cue() {
+        for (raw, reply) in [
+            // Kept verbatim.
+            (
+                "book the blue room scratch that book the red one",
+                "Book the blue room, scratch that, book the red one.",
+            ),
+            // No cue.
+            (
+                "book the blue room and then the red one",
+                "Book the blue room and then the red one.",
+            ),
+            // Not whole words.
+            (
+                "the blue room has a scratch thatch roof",
+                "The blue room has a scratch thatch roof.",
+            ),
+            // Nothing before the cue.
+            ("never mind the weather today", "Mind the weather today."),
+        ] {
+            assert_eq!(judge(raw, reply, p()), Judgement::Accepted, "{raw}");
+        }
+        assert_eq!(
+            content_words("It\u{2019}s Twelve o'clock, so GO"),
+            ["it's", "12", "o'clock", "go"]
+        );
+    }
+
     #[test]
     fn a_dropped_link_falls_back() {
         assert_eq!(
@@ -780,6 +974,7 @@ mod tests {
     fn judgements_have_names_and_the_timeout_is_three_seconds() {
         assert_eq!(Judgement::DroppedNumber.name(), "dropped_number");
         assert_eq!(Judgement::Accepted.name(), "accepted");
+        assert_eq!(Judgement::UnresolvedCancel.name(), "unresolved_cancel");
         assert_eq!(TIMEOUT, Duration::from_millis(3_000));
         assert_eq!(PROMPT_NAME, "v7");
     }
