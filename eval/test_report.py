@@ -154,7 +154,7 @@ class RegressTests(unittest.TestCase):
     def test_dry_run_prints_the_plan_and_the_cost_without_a_key_or_the_network(self):
         p = self.run_cli("--dry-run")
         self.assertEqual(p.returncode, 0, p.stderr)
-        for want in ("40", "prompt", "sha c530a8a410f1", "z-ai/glm-5.3-flash", "estimated cost", "baseline", "NOT set"):
+        for want in ("40", "prompt", "sha 6ab40138ab58", "z-ai/glm-5.3-flash", "estimated cost", "baseline", "NOT set"):
             self.assertIn(want, p.stdout)
 
     def test_dry_run_never_prints_a_key(self):
@@ -175,7 +175,7 @@ class RegressTests(unittest.TestCase):
             f.write_text("A different prompt.")
             p = self.run_cli("--dry-run", env={"EVAL_APP_PROMPT": str(f)})
             self.assertIn(str(f), p.stdout)
-            self.assertNotIn("c530a8a410f1", p.stdout.split("prompt")[1].split("\n")[0])
+            self.assertNotIn("6ab40138ab58", p.stdout.split("prompt")[1].split("\n")[0])
 
     def test_a_real_run_calls_scripts_that_exist_in_order(self):
         calls = []

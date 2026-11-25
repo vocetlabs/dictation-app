@@ -41,8 +41,8 @@ python3 eval/report.py <run folder> [--baseline <run folder>] # 5. ZER, AMEND, t
 | `bench1_vm.sh` | BENCH1, internal: runs the dictation bench ([vocetlabs/dictation-bench](https://github.com/vocetlabs/dictation-bench), its own MIT repository) in this Mac's Lume VM, for local and quiet-Mac timed runs; results in `reports/bench1.md` |
 
 **The app's prompt.** `regress.sh` and `evalcommon.app_prompt_path()` read the prompt the app ships so eval and
-app can't drift: `crates/core/prompts/cleanup.txt` once Q2 puts it there, until then `prompts/v4.txt` (the same
-text, byte for byte, sha `c530a8a410f1`). `EVAL_APP_PROMPT=<file>` tries a candidate before it is in the app.
+app can't drift: `crates/core/prompts/cleanup.txt` (prompt v7 since CLN1, sha `6ab40138ab58`; `prompts/v4.txt`,
+sha `c530a8a410f1`, is only the fallback when that file is missing, and the stored regression baseline is still v4). `EVAL_APP_PROMPT=<file>` tries a candidate before it is in the app.
 
 ## Regression check
 

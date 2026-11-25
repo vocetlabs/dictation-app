@@ -37,8 +37,9 @@ mod tests {
 
     #[test]
     fn the_prompt_is_v3_byte_for_byte() {
-        // SHA-256 of prompts.py's PROMPTS["v3"][0] on eval/local-cleanup,
-        // computed with Python from that file on 2026-11-20.
+        // SHA-256 of prompts.py's PROMPTS["v3"][0] on eval/local-cleanup
+        // (2026-11-20) plus "erm", "hmm" and "mm" in the filler-sound list
+        // (CLN1, 2026-11-24); computed with Python from the file.
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(SYSTEM_PROMPT.as_bytes());
         let hex = digest.iter().fold(String::new(), |mut hex, b| {
@@ -48,7 +49,7 @@ mod tests {
         });
         assert_eq!(
             hex,
-            "7b791b1cfc3d40d71fc6f73c5ceac5c1893d8696e34194f53186e56773ce9585"
+            "9013f6b4ef412a3b833c43d9a78708355b984003bb6a2e903c95bf492b11478a"
         );
         assert!(SYSTEM_PROMPT.starts_with("You clean up dictated speech-to-text transcripts."));
         assert!(SYSTEM_PROMPT.ends_with("Return only the cleaned transcript."));
