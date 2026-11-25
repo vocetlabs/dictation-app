@@ -47,7 +47,8 @@ class RustGuardTests(unittest.TestCase):
         self.assertEqual(guard.judge(raw, "My number is Thanks for considering it.", P), "dropped_number")
         self.assertEqual(guard.judge("It's $1,750.", "It's $1750.", P), "cleaned")
         self.assertEqual(guard.judge("It's $17.50.", "It's $1,750.", P), "dropped_number")
-        self.assertEqual(guard.judge("January 23rd. Sorry, January 29th.", "January 29th.", P), "dropped_number")
+        self.assertEqual(guard.judge("Call 555-0164. Thanks!", "Call me. Thanks!", P), "dropped_number")
+        self.assertEqual(guard.judge("Pay 40 now.", "Pay now.", P), "dropped_number")
 
     def test_a_dropped_link_falls_back(self):
         self.assertEqual(guard.judge("Register at summit.northwind.io slash register.",
@@ -96,26 +97,55 @@ class RustGuardTests(unittest.TestCase):
         self.assertEqual(offline_cleanup.prompt_sha(P), "f2a6b565e9db")
 
 
-class RelaxedGuardTests(unittest.TestCase):
-    def test_a_resolved_self_correction_is_allowed(self):
-        self.assertEqual(guard.judge_relaxed("Starting at 9, sorry, starting at 10 at the garden.",
-                                             "Starting at 10 at the garden.", P), "cleaned")
-        self.assertEqual(guard.judge_relaxed("The cutoff is January 23rd. Sorry, January 29th.",
-                                             "The cutoff is January 29th.", P), "cleaned")
-        self.assertEqual(guard.judge_relaxed("Inspection at 1240 Birch is Friday at 10. Sorry, 1030.",
-                                             "Inspection at 1240 Birch is Friday at 1030.", P), "cleaned")
-        self.assertEqual(guard.judge_relaxed("We got about 4,200 pounds. Sorry, no. 3,900 pounds.",
-                                             "We got 3,900 pounds.", P), "cleaned")
-        self.assertEqual(guard.judge_relaxed("Brunch Sunday? No, wait, Saturday?", "Brunch Saturday?", P), "cleaned")
+class CorrectionGuardTests(unittest.TestCase):
+    """CLN1, mirrors the Rust tests in crates/core/src/cleanup.rs."""
 
-    def test_other_drops_still_fall_back(self):
-        raw = "Use dateFNS. Oh, and we're on version 3, so don't use the old imports. Thank you."
-        self.assertEqual(guard.judge_relaxed(raw, "Use dateFNS. Thank you.", P), "dropped_number")
-        self.assertEqual(guard.judge_relaxed("Ask Tomas Herrera today.", "Ask him today.", P), "dropped_name")
-        # The corrected value itself must stay.
-        self.assertEqual(guard.judge_relaxed("At 9, sorry, 10.", "At the time.", P), "dropped_number")
-        self.assertEqual(guard.judge("At 9, sorry, 10.", "At 10.", P),
-                         "dropped_number")
+    def test_a_resolved_self_correction_is_accepted(self):
+        for raw, reply in [
+            ("20 copies, make that 30", "30 copies"),
+            ("Print 20 copies, make that 30.", "Print 30 copies."),
+            ("Please email Carlos, I mean Carla", "Please email Carla"),
+            ("Use version 3.1, wait, no, 3.2", "Use version 3.2"),
+            ("January 23rd. Sorry, January 29th.", "January 29th."),
+            ("We got about 4,200 pounds. Sorry, no. 3,900 pounds.", "We got 3,900 pounds."),
+            ("Set it to 10 a minute, make that 5 per IP.", "Set it to 5 per IP."),
+            ("Brunch Sunday? No, wait, Saturday?", "Brunch Saturday?"),
+        ]:
+            self.assertEqual(guard.judge(raw, reply, P), "cleaned", raw)
+
+    def test_the_corrected_value_or_one_with_no_cue_still_falls_back(self):
+        for raw, reply in [
+            ("January 23rd. Sorry, January 29th.", "January 23rd."),
+            ("It started in build 4.2, wait, no, 4.3.", "It started in build 4.2."),
+            ("Pay 40 now.", "Pay now."),
+            ("Order 20 copies for the whole office this week, I mean it.",
+             "Order copies for the whole office this week, I mean it."),
+            ("Send 2 by november", "Send by november"),
+            ("Pay 8 waiting fees", "Pay waiting fees"),
+            ("Meet at 5, sorry, 6. The doors open at 5 sharp.", "Meet at 6. The doors open sharp."),
+            ("At 9, sorry, 10.", "At the time."),
+        ]:
+            self.assertEqual(guard.judge(raw, reply, P), "dropped_number", raw)
+        self.assertEqual(guard.judge("Email Carlos today", "Email today", P), "dropped_name")
+        self.assertEqual(guard.judge("Ask Tomas Herrera today.", "Ask him today.", P), "dropped_name")
+
+    def test_a_dropped_link_is_refused_even_with_a_cue(self):
+        for raw, reply in [
+            ("Write to d.ramirez@acme.com, sorry, to ops@acme.com", "Write to ops@acme.com"),
+            ("See https://x.dev/a, I mean it", "See it, I mean it"),
+            ("Open billing.ts, no, wait, main.rs", "Open main.rs"),
+        ]:
+            self.assertEqual(guard.judge(raw, reply, P), "dropped_link", raw)
+
+    def test_corrected_reads_the_cue_window_and_whole_words(self):
+        self.assertTrue(guard.corrected("at 9, sorry, 10", "9"))
+        self.assertTrue(guard.corrected("at 1,200, sorry, 900", "1200"))
+        self.assertTrue(guard.corrected("the 1st, sorry, the 2nd", "1"))
+        self.assertFalse(guard.corrected("at 2.5, sorry, 3", "2"))
+        self.assertFalse(guard.corrected("at 12, sorry, 13", "2"))
+        self.assertFalse(guard.corrected("at 9", "9"))
+        self.assertTrue(guard.corrected("Ask Carlos, ACTUALLY Carla", "Carlos"))
+        self.assertFalse(guard.corrected("Ask Carlos, actuallyish Carla", "Carlos"))
 
 
 class FakeGroq(http.server.BaseHTTPRequestHandler):
