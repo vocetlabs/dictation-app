@@ -1,7 +1,8 @@
 //! QT1: the cleanup guard as one table: what it refuses, and what it accepts
 //! on purpose. A row is `(raw, reply, judgement)`. Self-corrections keep
-//! both values (prompt v4); a reply that drops or rewrites a number, link or
-//! name is refused; invented content is caught only by the length check.
+//! both values (prompt v4); since CLN1 (prompt v7) a reply may resolve one, so a number or
+//! name the transcript corrects right after may go. A reply that otherwise drops or rewrites a
+//! number, link or name is refused; invented content is caught only by the length check.
 
 use dictation_core::cleanup::Judgement::{
     Accepted, DroppedLink, DroppedName, DroppedNumber, Empty, TooLong,
@@ -35,7 +36,7 @@ const TABLE: &[(&str, &str, Judgement)] = &[
     (
         "Print 20 copies, make that 30.",
         "Print 30 copies.",
-        DroppedNumber,
+        Accepted,
     ),
     (
         "Print 20 copies, make that 30.",
