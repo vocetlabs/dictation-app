@@ -11,7 +11,7 @@ Same checks, same order, same constants. Differences, all from the language, non
   - `char::to_lowercase` vs `str.lower()`: identical for this text (no Turkish dotted I etc.).
   - Rust `trim()` trims Unicode White_Space; Python `strip()` with no argument also strips a few
     extra separators (\\x1c-\\x1f). None occur in these transcripts.
-CLN1 adds the correction rule (`corrected`) from crates/core/src/cleanup.rs, so offline runs match the app.
+CLN1 adds the correction rule (`corrected`) and the cancel check (`unresolved_cancel`) from crates/core/src/cleanup.rs, so offline runs match the app.
 The unit tests in test_offline_cleanup.py mirror the Rust module's tests.
 """
 from __future__ import annotations
@@ -27,6 +27,15 @@ SENTENCE_FLOOR = 12
 # CLN1: a number or name the transcript corrects right after may be dropped from the reply.
 CORRECTION_CUE = re.compile(r"\b(sorry|wait|no|actually|make that|i mean|rather|scratch that|correction)\b", re.I)
 CUE_WINDOW = 30
+# CLN1 2b: a whole-clause cancel cue the reply removes must take the cancelled words with it.
+CANCEL_CUE = re.compile(r"\b(scratch that|never ?mind|forget (?:that|it)|ignore that|cancel that|delete that)\b", re.I)
+CANCEL_WORDS = set("scratch never mind nevermind forget ignore cancel delete".split())
+CANCEL_LEAD = set("actually wait sorry no oh ok okay well".split())
+CANCEL_STOP = set("a an the um uh erm er ah hmm mm so like you know i me my we our us is are was were be to of in on at for "
+                  "and or but it that this can could would will just kind sort".split())
+NUMBER_WORDS = {w: str(i) for i, w in
+                enumerate("zero one two three four five six seven eight nine ten eleven twelve".split())}
+CONTENT_WORD = re.compile(r"[a-z0-9']+")
 
 
 def user_message(transcript: str) -> str:
@@ -74,6 +83,8 @@ def judge(raw: str, reply: str, prompt: str) -> str:
     for name in names(raw):
         if any(part not in words for part in word_parts(name)) and not corrected(raw, name):
             return "dropped_name"
+    if unresolved_cancel(raw, reply):
+        return "unresolved_cancel"
     return "cleaned"
 
 
@@ -182,3 +193,30 @@ def corrected(raw: str, value: str) -> bool:
     body = r",?".join(re.escape(c) for c in value) if value[:1].isdigit() else re.escape(value)
     spots = [m.end() for m in re.finditer(rf"(?<![\w.,]){body}(?:st|th|[nr]d)?(?![\w]|[.,:]\d)", raw)]
     return bool(spots) and all(CORRECTION_CUE.search(raw[e:e + CUE_WINDOW]) for e in spots)
+
+
+def content_words(text: str) -> list[str]:
+    return [NUMBER_WORDS.get(w, w) for w in CONTENT_WORD.findall(text.lower().replace("\u2019", "'"))
+            if w not in CANCEL_STOP]
+
+
+def unresolved_cancel(raw: str, reply: str) -> bool:
+    """The reply removed a cancel cue ("scratch that") without applying it: the two content words before
+    the cue are still there, and nothing but cue words and lead words is gone. A cue kept verbatim doesn't count."""
+    kept = content_words(reply)
+    for m in CANCEL_CUE.finditer(raw):
+        if CANCEL_CUE.search(reply) and m.group(0).lower() in reply.lower():
+            continue
+        before = [w for w in content_words(raw[:m.start()]) if w not in CANCEL_LEAD][-2:]
+        if not before or not all(w in kept for w in before):
+            continue
+        left = list(kept)
+        deleted = False
+        for w in content_words(raw):
+            if w in left:
+                left.remove(w)
+            elif w not in CANCEL_WORDS and w not in CANCEL_LEAD:
+                deleted = True
+        if not deleted:
+            return True
+    return False

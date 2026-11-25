@@ -147,6 +147,39 @@ class CorrectionGuardTests(unittest.TestCase):
         self.assertTrue(guard.corrected("Ask Carlos, ACTUALLY Carla", "Carlos"))
         self.assertFalse(guard.corrected("Ask Carlos, actuallyish Carla", "Carlos"))
 
+    def test_a_cancel_cue_removed_without_cancelling_falls_back(self):
+        raw = "the meeting is on monday. the call is at eleven am. scratch that the meeting is on thursday."
+        for reply in [
+            "The meeting is on Monday. The call is at eleven am. The meeting is on Thursday.",
+            "The meeting is on Monday. The call is at 11 am. The meeting is on Thursday.",
+        ]:
+            self.assertEqual(guard.judge(raw, reply, P), "unresolved_cancel", reply)
+        for cue in ["scratch that", "never mind", "nevermind", "forget that", "forget it", "ignore that",
+                    "cancel that", "delete that"]:
+            raw = f"book the blue room, oh wait. {cue.capitalize()} book the red one"
+            self.assertEqual(guard.judge(raw, "Book the blue room. Book the red one.", P), "unresolved_cancel", cue)
+
+    def test_an_applied_cancellation_is_accepted(self):
+        for raw, reply in [
+            ("send it to the data team never mind to the design team", "Send it to the design team."),
+            ("delete the old files. actually, never mind, keep them", "Keep the old files."),
+            ("order the green chairs for the lobby, they look good with the carpet and the new lamps, "
+             "and then book the movers for friday, scratch that order the grey chairs",
+             "Order the grey chairs."),
+        ]:
+            self.assertEqual(guard.judge(raw, reply, P), "cleaned", raw)
+
+    def test_the_cancel_check_needs_a_removed_whole_cue(self):
+        for raw, reply in [
+            ("book the blue room scratch that book the red one",
+             "Book the blue room, scratch that, book the red one."),
+            ("book the blue room and then the red one", "Book the blue room and then the red one."),
+            ("the blue room has a scratch thatch roof", "The blue room has a scratch thatch roof."),
+            ("never mind the weather today", "Mind the weather today."),
+        ]:
+            self.assertEqual(guard.judge(raw, reply, P), "cleaned", raw)
+        self.assertEqual(guard.content_words("It\u2019s Twelve o'clock, so GO"), ["it's", "12", "o'clock", "go"])
+
 
 class FakeGroq(http.server.BaseHTTPRequestHandler):
     seen: list = []
