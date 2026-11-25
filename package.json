@@ -2,7 +2,7 @@
   "name": "dictation-app",
   "private": true,
   "license": "FSL-1.1-ALv2",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "engines": {
     "node": ">=24 <25"

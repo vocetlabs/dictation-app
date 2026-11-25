@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-app"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "dictation-core",
@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hound",
  "proptest",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-pipeline"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dictation-core",
  "dictation-platform",
@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-platform"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "block2",
  "dictation-core",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-ports"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dictation-core",
  "serde",
@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-telemetry"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dictation-core",
  "dictation-ports",
@@ -894,7 +894,7 @@ dependencies = [
 
 [[package]]
 name = "dictation-transcribe"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dictation-core",
  "dictation-ports",
